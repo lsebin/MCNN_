@@ -29,7 +29,10 @@ In a second terminal window, run
 Use the Town03 map for `carla-town-v0`, and Town04 for `carla-lane-v0`.
 
 # Quickstart
-Download the updated datasets for Adroit and CARLA from []().
+Download the updated datasets for Adroit:
+```bash
+python mems_obs/download_updated_datasets.py
+```
 
 Run BC with memories:
 ```bash
