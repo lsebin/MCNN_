@@ -1,4 +1,4 @@
-# Install
+# Memory-Consistent Neural Networks
 Create env, install pytorch, install requirements.
 ```bash
 conda create -n DL_env python=3.8
@@ -9,12 +9,12 @@ pip install -r requirements.txt
 Setup mujoco210 by following the instructions from https://github.com/openai/mujoco-py#install-mujoco.
 In case you run across a gcc error, please follow the trouble shooting instructions [here if you have sudo access](https://github.com/openai/mujoco-py#ubuntu-installtion-troubleshooting) or [here otherwise](https://github.com/openai/mujoco-py/issues/627#issuecomment-1383054926).
 
-# Install this package
+Install this package
 ```bash
 pip install -e .
 ```
 
-# Other Installs
+# Additional setup (only for CARLA)
 Instructions to install CARLA can be found [here](https://github.com/Farama-Foundation/d4rl/wiki/CARLA-Setup).
 Also note that you have to run the following for any CARLA experiments:
 
