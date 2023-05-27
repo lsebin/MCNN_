@@ -1,4 +1,5 @@
 # Memory-Consistent Neural Networks
+## Setup
 Create env, install pytorch, install requirements.
 ```bash
 conda create -n DL_env python=3.8
@@ -14,7 +15,7 @@ Install this package
 pip install -e .
 ```
 
-# Additional setup (only for CARLA)
+## Additional setup (only for CARLA)
 Instructions to install CARLA can be found [here](https://github.com/Farama-Foundation/d4rl/wiki/CARLA-Setup).
 Also note that you have to run the following for any CARLA experiments:
 
@@ -28,7 +29,7 @@ In a second terminal window, run
 ```
 Use the Town03 map for `carla-town-v0`, and Town04 for `carla-lane-v0`.
 
-# Quickstart
+## Quickstart
 Download the updated datasets for Adroit:
 ```bash
 python mems_obs/download_updated_datasets.py
@@ -40,8 +41,8 @@ python algos/td3bc_trainer.py --algo-name mem_bc --task pen-human-v1 --num_memor
 ```
 Replace task with any of the 14 tasks (hammer-human-v1, pen-human-v1, relocate-human-v1, door-human-v1, hammer-expert-v1, pen-expert-v1, relocate-expert-v1, door-expert-v1, hammer-cloned-v1, pen-cloned-v1, relocate-cloned-v1, door-cloned-v1, carla-lane-v0, carla-town-v0).
 
-# Detailed instructions
-## Collect data
+## Detailed instructions
+### Collect data
 Download d4rl datasets and resnet models for CARLA embeddings:
 ```bash
 python data/download_d4rl_datasets.py
@@ -53,7 +54,7 @@ Gnerate CARLA mebeddings
 python data/generate_carla_models.py
 ```
 
-## Create Memories
+### Create Memories
 Create memories:
 ```bash
 python mems_obs/create_gng_incrementally.py --name pen-human-v1 --num_memories_frac 0.1
@@ -66,7 +67,7 @@ python mems_obs/update_data.py --name pen-human-v1 --num_memories_frac 0.1
 ```
 Similar to above, replace name with any of the 14 tasks and num_memories_frac with any value less than 1.
 
-## Train / Evaluate
+### Train / Evaluate
 For BC with memories:
 ```bash
 python algos/td3bc_trainer.py --algo-name mem_bc --task pen-human-v1 --num_memories_frac 0.1 --Lipz 1.0 --lamda 1.0
