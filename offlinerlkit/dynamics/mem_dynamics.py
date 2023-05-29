@@ -104,7 +104,7 @@ class MemDynamics(object):
             # dist = dist.cpu().numpy()
 
             if self.penalty_coef:
-                penalty = -1.0 / dist
+                penalty = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
                 # print(f'{rewards.min()=} {rewards.max()=}')
                 # print(f'before clip penalty.min()={penalty.min().item()} penalty.max()={penalty.max()=}')
                 penalty = np.clip(penalty.cpu().numpy(), -10, 0)
