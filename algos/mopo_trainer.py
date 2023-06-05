@@ -15,7 +15,8 @@ from offlinerlkit.modules import ActorProb, Critic, TanhDiagGaussian, EnsembleDy
 from offlinerlkit.dynamics import EnsembleDynamics, MemEnsembleDynamics, MemDynamics
 from offlinerlkit.utils.scaler import StandardScaler
 from offlinerlkit.utils.termination_fns import get_termination_fn
-from offlinerlkit.utils.load_dataset import qlearning_dataset
+#from offlinerlkit.utils.load_dataset import qlearning_dataset
+from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc
 from offlinerlkit.buffer import ReplayBuffer
 from offlinerlkit.utils.logger import Logger, make_log_dirs
 from offlinerlkit.policy_trainer import MBPolicyTrainer
@@ -41,7 +42,7 @@ walker2d-medium-expert-v2: rollout-length=1, penalty-coef=2.5
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--algo-name", type=str, default="mem_mopo", choices=["mopo", "memensemble_mopo", "mem_mopo"])
-    parser.add_argument("--task", type=str, default="halfcheetah-medium-v2")
+    parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
     parser.add_argument("--train-size", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--actor-lr", type=float, default=1e-4)
@@ -81,6 +82,9 @@ def get_args():
     parser.add_argument('--use_tqdm', type=int, default=1) # 1 or 0
 
     parser.add_argument("--mppi-horizon", type=int, default=5)
+    
+    # for memories
+    parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
 
     return parser.parse_args()
 
@@ -88,7 +92,10 @@ def get_args():
 def train(args=get_args()):
     # create env and dataset
     env = gym.make(args.task)
-    dataset = qlearning_dataset(args.task, args.train_size, args.num_memories_frac)
+    #dataset = qlearning_dataset(args.task, args.train_size, args.num_memories_frac)
+    dataset = qlearning_dataset_percentbc(args.task, args.chosen_percentage, args.num_memories_frac)
+    if 'antmaze' in args.task:
+        dataset["rewards"] -= 1.0
     args.obs_shape = env.observation_space.shape
     args.obs_dim = np.prod(args.obs_shape)
     args.action_dim = np.prod(env.action_space.shape)

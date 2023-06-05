@@ -349,7 +349,7 @@ def make_log_dirs_td3bc(
     seed: int,
     args: Dict,
     record_params: Optional[List]=None,
-    root_dir = "algos/exp_td3bc",
+    root_dir = "algos/exp",
 ) -> str:
     if record_params is not None:
         for param_name in record_params:

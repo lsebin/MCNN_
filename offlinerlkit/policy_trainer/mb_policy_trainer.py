@@ -12,7 +12,6 @@ from offlinerlkit.buffer import ReplayBuffer
 from offlinerlkit.utils.logger import Logger
 from offlinerlkit.policy import BasePolicy
 
-
 # model-based policy trainer
 class MBPolicyTrainer:
     def __init__(
@@ -62,8 +61,10 @@ class MBPolicyTrainer:
             for it in pbar:
                 if num_timesteps % self._rollout_freq == 0:
                     init_obss = self.real_buffer.sample(self._rollout_batch_size)["observations"].cpu().numpy()
-                    rollout_transitions, rollout_info = self.policy.rollout(init_obss, self._rollout_length)
-                    self.fake_buffer.add_batch(**rollout_transitions)
+                    # add imagined next oberservation from rollout(dynamics.step()) + find nearest memory for imagine/real next ob
+                    # rollout_transitions, rollout_info = self.policy.rollout(init_obss, self._rollout_length)
+                    # don't need fake buffer -> now use only to compute new reward function not to generate fake batches 
+                    # self.fake_buffer.add_batch(**rollout_transitions)
                     self.logger.log(
                         "num rollout transitions: {}, reward mean: {:.4f}".\
                             format(rollout_info["num_transitions"], rollout_info["reward_mean"])

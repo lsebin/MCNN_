@@ -42,6 +42,8 @@ class MemDynamicsModel(MLP):
                                                                     beta,
                                                                 )
         
+        #print(torch.max(outputs),torch.min(outputs), torch.max(self.memory_act(outputs, beta)),  torch.min(self.memory_act(outputs, beta)))
+        
         return preds
 
 

@@ -54,14 +54,36 @@ def download(name):
 
 os.makedirs('data/datasets', exist_ok=True)
 # for env_name in ['halfcheetah', 'hopper', 'walker2d']:
-# 	for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expert']:
-# 		name = f'{env_name}-{dataset_type}-v2'
-# 		download(name)
+#  	for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expert']:
+#  		name = f'{env_name}-{dataset_type}-v2'
+#  		download(name)
 
 # for env_name in ['hammer', 'pen', 'relocate', 'door']:
 # 	for dataset_type in ['human', 'expert', 'cloned']:
 # 		name = f'{env_name}-{dataset_type}-v1'
 # 		download(name)
 
-for name in ['carla-lane-v0', 'carla-town-v0', 'carla-town-full-v0']:
+# for name in ['carla-lane-v0', 'carla-town-v0', 'carla-town-full-v0']:
+#	download(name)
+
+"""
+for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expert', 'random-expert]:
+	name = f'ant-{dataset_type}-v0'
 	download(name)
+"""
+
+# upgrade to numpy = 1.24... and try running it again
+
+for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
+	if env_name == 'antmaze-umaze':
+		for dataset_type in ['-diverse', '']:
+			name = f'{env_name}{dataset_type}-v2'
+			download(name)
+	else :
+		for dataset_type in ['diverse', 'play']:
+			name = f'{env_name}-{dataset_type}-v2'
+			download(name)
+
+    	 
+				
+             

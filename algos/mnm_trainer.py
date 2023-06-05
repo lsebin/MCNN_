@@ -4,12 +4,13 @@ import random
 import gym
 import d4rl
 
+import os
 import numpy as np
 import torch
 
 
 from offlinerlkit.nets import MLP
-from offlinerlkit.modules import Actor, Critic, MemActor
+from offlinerlkit.modules import Critic, MemActor, TanhDiagGaussian, ActorProb
 from offlinerlkit.utils.noise import GaussianNoise
 from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc
 from offlinerlkit.utils.scaler import StandardScaler
@@ -56,12 +57,15 @@ def get_args():
     parser.add_argument("--alpha", type=float, default=0.2)
     parser.add_argument("--auto-alpha", default=True)
     parser.add_argument("--target-entropy", type=int, default=None)
+    parser.add_argument("--alpha-lr", type=float, default=1e-4)
     parser.add_argument("--actor-lr", type=float, default=1e-4)
     parser.add_argument("--critic-lr", type=float, default=3e-4)
+    parser.add_argument("--model-retain-epochs", type=int, default=5)
 
     parser.add_argument("--rollout-freq", type=int, default=1000)
     parser.add_argument("--rollout-batch-size", type=int, default=10000)
     parser.add_argument("--rollout-length", type=int, default=5)
+    parser.add_argument("--penalty-coef", type=float, default=0.5)
     parser.add_argument("--real-ratio", type=float, default=0.05)
     parser.add_argument("--epoch", type=int, default=3000)
     parser.add_argument("--step-per-epoch", type=int, default=1000)
@@ -79,13 +83,13 @@ def get_args():
 
 
 def train(args=get_args()):
-    # create env and dataset
     env = gym.make(args.task)
     dataset = qlearning_dataset_percentbc(args.task, args.chosen_percentage, args.num_memories_frac)
     if 'antmaze' in args.task:
         dataset["rewards"] -= 1.0
     args.obs_shape = (512,) if 'carla' in args.task else env.observation_space.shape
-    args.obs_dim = np.prod(args.obs_shape)
+    args.obs_dim = np.prod(args.obs_shape)# create env and dataset
+    
     args.action_dim = 2 if 'carla' in args.task else np.prod(env.action_space.shape)
     args.max_action = env.action_space.high[0]
 
@@ -155,15 +159,21 @@ def train(args=get_args()):
     actor_backbone = MLP(input_dim=np.prod(args.obs_shape), hidden_dims=actor_hidden_dims)
     critic1_backbone = MLP(input_dim=np.prod(args.obs_shape)+args.action_dim, hidden_dims=[256, 256])
     critic2_backbone = MLP(input_dim=np.prod(args.obs_shape)+args.action_dim, hidden_dims=[256, 256])
+    dist = TanhDiagGaussian(
+        latent_dim=getattr(actor_backbone, "output_dim"),
+        output_dim=args.action_dim,
+        unbounded=True,
+        conditioned_sigma=True
+    )
     
     # LATER ON, ADD THIS BACK! CAUSE IT WOULD BE GREAT TO HAVE MCNN POLICY AND MODEL!
+    # Probably will have to add dist attribute to MemActor
     # if "mem" in args.algo_name: 
     #     actor = MemActor(actor_backbone, args.action_dim, device=args.device, Lipz=args.Lipz, lamda=args.lamda)
     # else:
-    #     actor = Actor(actor_backbone, args.action_dim, device=args.device)
-
-    actor = Actor(actor_backbone, args.action_dim, device=args.device)
-
+    #     actor = ActorProb(actor_backbone, dist, args.device)
+    
+    actor = ActorProb(actor_backbone, dist, args.device)
     critic1 = Critic(critic1_backbone, args.device)
     critic2 = Critic(critic2_backbone, args.device)
     actor_optim = torch.optim.Adam(actor.parameters(), lr=args.actor_lr)
@@ -183,7 +193,38 @@ def train(args=get_args()):
         penalty_coef=args.penalty_coef,
         # train_horizon=args.dynamics_train_horizon,
     )
+    
+    # log
+    record_params = ["chosen_percentage", "rollout_length"]
+    if "mem" in args.algo_name:
+        record_params += ["num_memories_frac", "Lipz", "lamda"]
 
+    log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=args.seed, args=vars(args), record_params=record_params)
+    # key: output file name, value: output handler type
+    output_config = {
+        "consoleout_backup": "stdout",
+        "policy_training_progress": "csv",
+        "tb": "tensorboard"
+    }
+    logger = Logger(log_dirs, output_config)
+    logger.log_hyperparameters(vars(args))
+    
+    
+    
+    # train + save dynamics
+    #dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
+    
+    dynamics_path = f'{logger.model_dir}'
+    if not os.path.exists(f'{dynamics_path}'):
+        # dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
+        print(f'finished training dynamics and exiting. Uncomment exit here to go to train policy after everything worked fine with dynamics.')
+    else:
+        print(f'dynamics already exists. will be loaded from {dynamics_path}')
+        dynamics.load(f'{dynamics_path}')
+    
+        
+    
+        
     # create policy 
     if args.auto_alpha:
         target_entropy = args.target_entropy if args.target_entropy \
@@ -210,21 +251,6 @@ def train(args=get_args()):
         alpha=alpha
     )
 
-    # log
-    record_params = ["chosen_percentage", "rollout_length"]
-    if "mem" in args.algo_name:
-        record_params += ["num_memories_frac", "Lipz", "lamda"]
-
-    log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=args.seed, args=vars(args), record_params=record_params)
-    # key: output file name, value: output handler type
-    output_config = {
-        "consoleout_backup": "stdout",
-        "policy_training_progress": "csv",
-        "tb": "tensorboard"
-    }
-    logger = Logger(log_dirs, output_config)
-    logger.log_hyperparameters(vars(args))
-
     # create trainer(s)
     policy_trainer = MBPolicyTrainer(
         policy=policy,
@@ -240,11 +266,6 @@ def train(args=get_args()):
         eval_episodes=args.eval_episodes,
         lr_scheduler=lr_scheduler
     )
-
-    # train dynamics
-    dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
-    print(f'finished training dynamics and exiting. Uncomment exit here to go to train policy after everything workd fine with dynamics.')
-    exit()
 
     # train policy
     policy_trainer.train(use_tqdm=args.use_tqdm)
