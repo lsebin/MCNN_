@@ -41,7 +41,8 @@ class MNMPolicy(SACPolicy):
         )
 
         self.dynamics = dynamics
-
+        
+    """ 
     def rollout(
         self,
         init_obss: np.ndarray,
@@ -81,8 +82,51 @@ class MNMPolicy(SACPolicy):
 
         return rollout_transitions, \
             {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean(), "raw_reward_mean": raw_rewards_arr.mean(), "penalty_mean": penalty_arr.mean()}
+    """
+    
+    def rollout(
+        self,
+        init_obss: np.ndarray,
+        real_next_obs: np.ndarray,
+        rollout_length: int
+    ) -> Tuple[Dict[str, np.ndarray], Dict]:
+
+        num_transitions = 0
+        rewards_arr = np.array([])
+        raw_rewards_arr = np.array([])
+        penalty_arr = np.array([])
+        rollout_transitions = defaultdict(list)
+
+        # rollout
+        observations = init_obss
+        for _ in range(rollout_length):
+            actions = self.select_action(observations)
+            next_observations, rewards, terminals, info = self.dynamics.step(observations, real_next_obs, actions)
+            rollout_transitions["obss"].append(observations)
+            rollout_transitions["next_obss"].append(next_observations)
+            rollout_transitions["actions"].append(actions)
+            rollout_transitions["rewards"].append(rewards)
+            rollout_transitions["terminals"].append(terminals)
+
+            num_transitions += len(observations)
+            rewards_arr = np.append(rewards_arr, rewards.flatten())
+            raw_rewards_arr = np.append(raw_rewards_arr, info["raw_reward"].flatten())
+            penalty_arr = np.append(penalty_arr, info["penalty"].flatten()) # OR MODIFY PENALTY HERE!
+
+            nonterm_mask = (~terminals).flatten()
+            if nonterm_mask.sum() == 0:
+                break
+
+            observations = next_observations[nonterm_mask]
+        
+        for k, v in rollout_transitions.items():
+            rollout_transitions[k] = np.concatenate(v, axis=0)
+
+        return rollout_transitions, \
+            {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean(), "raw_reward_mean": raw_rewards_arr.mean(), "penalty_mean": penalty_arr.mean()}
 
     def learn(self, batch: Dict) -> Dict[str, float]:
-        real_batch, fake_batch = batch["real"], batch["fake"]
-        mix_batch = {k: torch.cat([real_batch[k], fake_batch[k]], 0) for k in real_batch.keys()}
+        #real_batch, fake_batch = batch["real"], batch["fake"]
+        #mix_batch = {k: torch.cat([real_batch[k], fake_batch[k]], 0) for k in real_batch.keys()}
+        mix_batch = batch["real"]
         return super().learn(mix_batch)
