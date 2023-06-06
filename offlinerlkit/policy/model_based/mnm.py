@@ -102,6 +102,7 @@ class MNMPolicy(SACPolicy):
         for _ in range(rollout_length):
             actions = self.select_action(observations)
             next_observations, rewards, terminals, info = self.dynamics.step(observations, real_next_obs, actions)
+            
             rollout_transitions["obss"].append(observations)
             rollout_transitions["next_obss"].append(next_observations)
             rollout_transitions["actions"].append(actions)

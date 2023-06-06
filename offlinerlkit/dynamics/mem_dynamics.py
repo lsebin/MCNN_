@@ -80,6 +80,7 @@ class MemDynamics(object):
         mem_targets = torch.cat([delta_mem_obss, mem_rewards], dim=1)
         return mem_inputs, mem_targets
     
+    # find the memory of expected next observation
     def find_memories_penalty (self, inputs: torch.Tensor) -> np.ndarray:
         _, closest_nodes = torch.cdist(inputs, self.nodes_next_inputs).min(dim=1)
         mem_obss = self.nodes_obs[closest_nodes, :]
@@ -114,24 +115,40 @@ class MemDynamics(object):
             # dist = dist.cpu().numpy()
 
             if self.penalty_coef:
-                penalty = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
-                # should i find what action is actually executed and build changing values out of that?
-                # from mb_policy_trainer -> maybe this part should be at mnm.py and just input true next_obss
-                # action = self.policy.select_action(obs.reshape(1, -1), deterministic=True)
-                # next_obs, reward, terminal, _ = self.eval_env.step(action.flatten()) -> looks like we also need env
+                #penalty1 = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
+                
+                # find the memory of real/imagined next observation
                 mem_next_model = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device)) 
                 mem_next_real = self.find_memories_penalty(torch.from_numpy(real_next).float().to(self.device)) 
-                penalty = (np.linalg.norm(real_next-mem_next_real) / np.linalg.norm(next_obss-mem_next_model))
+                #penalty = np.sqrt(np.einsum('ij,ij->j', a_min_b, a_min_b))
+                # penalty = (np.linalg.norm(real_next-mem_next_real) / np.linalg.norm(next_obss-mem_next_model))
+                
+                # compute the difference of real/imaged observation and its memory
+                delta_mem_obss_model = np.power(next_obss-mem_next_model, 2)
+                delta_mem_obss_real = np.power(real_next-mem_next_real, 2)
+                #print(delta_mem_obss_model.shape, delta_mem_obss_real.shape)
+                
+                # calculate the penalty using Euclidean distance
+                penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_real)) / np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
+                
+                #print(dist.shape, next_obss.shape, real_next.shape, mem_next_model.shape, mem_next_real.shape)
                 # print(f'{rewards.min()=} {rewards.max()=}')
                 # print(f'before clip penalty.min()={penalty.min().item()} penalty.max()={penalty.max()=}')
                 #penalty = np.clip(np.log(penalty), -10, 0)
-                penalty = np.clip(np.log(penalty), -10, 0)
-                print(penalty, penalty.shape, rewards.shape)
+                
+                # clip the value
+                penalty = np.clip(np.log(penalty), -10, 0).reshape(10000, 1)
+                
+                # print(penalty, rewards, penalty.shape, rewards.shape)
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
-
+                
+                # update the reward
                 assert penalty.shape == rewards.shape
                 rewards = rewards - self.penalty_coef * penalty
+                #rewards = rewards + self.penalty_coef * penalty
                 info["penalty"] = penalty
+                exit()
+                #print(penalty, penalty1)
 
             return next_obss, rewards, terminals, info
     
