@@ -100,10 +100,17 @@ class MNMPolicy(SACPolicy):
         # rollout
         observations = init_obss
         for _ in range(rollout_length):
+            # this is coming from policy -> have to replace with real_action(from real_buffer)
+            #actions = real_actions # change to real action
             actions = self.select_action(observations)
+            # need to also input real rewards to the step function
             next_observations, rewards, terminals, info = self.dynamics.step(observations, real_next_obs, actions)
             
+            
+            # replace with real_values
+            # real transition with penalty from rollout
             rollout_transitions["obss"].append(observations)
+            # next_obs/actions/terminals into real
             rollout_transitions["next_obss"].append(next_observations)
             rollout_transitions["actions"].append(actions)
             rollout_transitions["rewards"].append(rewards)
@@ -125,6 +132,38 @@ class MNMPolicy(SACPolicy):
 
         return rollout_transitions, \
             {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean(), "raw_reward_mean": raw_rewards_arr.mean(), "penalty_mean": penalty_arr.mean()}
+         
+         
+             
+    def add_penalties(
+        self,
+        init_obss: np.ndarray,
+        rollout_length: int
+    ) -> Dict[str, np.ndarray]:
+        
+        rollout_transitions = defaultdict(list)
+
+        # rollout
+        #observations = init_obss["observations"]
+        #actions = init_obss["actions"]
+        for observations, actions, next_observations, _, terminals in init_obss:
+            # have to return updated rewards
+            next_observations, rewards, info = self.dynamics.step(observations, next_observations, actions)
+            
+            # replace with real_values
+            # real transition with penalty from rollout
+            rollout_transitions["obss"].append(observations)
+            # next_obs/actions/terminals into real
+            rollout_transitions["next_obss"].append(next_observations)
+            rollout_transitions["actions"].append(actions)
+            rollout_transitions["rewards"].append(rewards)
+            rollout_transitions["terminals"].append(terminals)
+        
+        for k, v in rollout_transitions.items():
+            rollout_transitions[k] = np.concatenate(v, axis=0)
+
+        return rollout_transitions
+           # {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean(), "raw_reward_mean": raw_rewards_arr.mean(), "penalty_mean": penalty_arr.mean()}
 
     def learn(self, batch: Dict) -> Dict[str, float]:
         #real_batch, fake_batch = batch["real"], batch["fake"]

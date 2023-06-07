@@ -33,6 +33,9 @@ class MBPolicyTrainer:
         self.policy = policy
         self.eval_env = eval_env
         self.real_buffer = real_buffer
+        # create a new real_buffer_with_penalty_reward  
+        # can just create it up here when defining 
+        
         self.fake_buffer = fake_buffer
         self.logger = logger
 
@@ -60,19 +63,17 @@ class MBPolicyTrainer:
             pbar = tqdm(range(self._step_per_epoch), desc=f"Epoch #{e}/{self._epoch}") if use_tqdm else range(self._step_per_epoch)
             for it in pbar:
                 if num_timesteps % self._rollout_freq == 0:
-                    init_obss = self.real_buffer.sample(self._rollout_batch_size) #["observations"].cpu().numpy()
-                    #print(init_obss)
-                    real_next_obs = init_obss["next_observations"].cpu().numpy()
-                    #real_action = init_obss["actions"].cpu().numpy()
-                    _, rollout_info = self.policy.rollout(init_obss["observations"].cpu().numpy(), real_next_obs, 1)
-                    #print(rollout_transitions)
-                    #exit()
-                    
                     # add imagined next oberservation from rollout(dynamics.step()) + find nearest memory for imagine/real next ob
                     # don't need fake buffer -> now use only to compute new reward function, not to generate fake batches 
                     
-                    # rollout_transitions, rollout_info = self.policy.rollout(init_obss, self._rollout_length)
-                    # self.fake_buffer.add_batch(**rollout_transitions)
+                    init_obss = self.real_buffer.sample(self._rollout_batch_size) 
+                    real_next_obs = init_obss["next_observations"].cpu().numpy()
+                    
+                    rollout_transitions, rollout_info = self.policy.rollout(init_obss["observations"].cpu().numpy(), real_next_obs, self._rollout_length)
+                    
+                    # a new buffer that takes out all the rollout transition (same as real but only penalty from imagination(model))
+                    self.real_buffer_with_new_penalty_reward.add_batch(**rollout_transitions)
+                    
                     # self.logger.log(
                     #     "num rollout transitions: {}, reward mean: {:.4f}".\
                     #         format(rollout_info["num_transitions"], rollout_info["reward_mean"])
@@ -80,12 +81,13 @@ class MBPolicyTrainer:
                     for _key, _value in rollout_info.items():
                         self.logger.logkv_mean("rollout_info/"+_key, _value)
 
-                #real_sample_size = int(self._batch_size * self._real_ratio)
-                #fake_sample_size = self._batch_size - real_sample_size
-                real_sample_size = int(self._batch_size * 1)
-                real_batch = self.real_buffer.sample(batch_size=real_sample_size)
+                #real_sample_size = int(self._batch_size * 1)
+                #real_batch = self.real_buffer.sample(batch_size=real_sample_size)
                 #fake_batch = self.fake_buffer.sample(batch_size=fake_sample_size)
-                #batch = {"real": real_batch, "fake": fake_batch}
+                
+                # sample from here self.real_buffer_with_new_penalty_reward
+                real_batch = self.real_buffer_with_new_penalty_reward.sample(batch_size=self._batch_size)
+                
                 batch = {"real": real_batch}
                 loss = self.policy.learn(batch)
                 if use_tqdm: pbar.set_postfix(**loss)

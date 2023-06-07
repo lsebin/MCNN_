@@ -56,8 +56,9 @@ class MemDynamics(object):
         self.nodes_actions = torch.from_numpy(dataset["memories_actions"]).float().to(self.device)
         self.nodes_next_obs = torch.from_numpy(dataset["memories_next_obs"]).float().to(self.device)
         self.nodes_rewards = torch.from_numpy(dataset["memories_rewards"]).float().to(self.device).unsqueeze(1)
-        #self.nodes_inputs = torch.cat([self.nodes_obs, self.nodes_actions], dim=1)
         self.nodes_inputs = torch.cat([self.nodes_obs, self.nodes_actions], dim=1)
+        
+        # 
         self.nodes_next_inputs = torch.cat([self.nodes_obs], dim=1)
 
         self.obss_abs_max = np.max(np.abs(dataset["observations"]), axis=0, keepdims=True)
@@ -120,8 +121,6 @@ class MemDynamics(object):
                 # find the memory of real/imagined next observation
                 mem_next_model = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device)) 
                 mem_next_real = self.find_memories_penalty(torch.from_numpy(real_next).float().to(self.device)) 
-                #penalty = np.sqrt(np.einsum('ij,ij->j', a_min_b, a_min_b))
-                # penalty = (np.linalg.norm(real_next-mem_next_real) / np.linalg.norm(next_obss-mem_next_model))
                 
                 # compute the difference of real/imaged observation and its memory
                 delta_mem_obss_model = np.power(next_obss-mem_next_model, 2)
@@ -131,24 +130,18 @@ class MemDynamics(object):
                 # calculate the penalty using Euclidean distance
                 penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_real)) / np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
                 
-                #print(dist.shape, next_obss.shape, real_next.shape, mem_next_model.shape, mem_next_real.shape)
-                # print(f'{rewards.min()=} {rewards.max()=}')
-                # print(f'before clip penalty.min()={penalty.min().item()} penalty.max()={penalty.max()=}')
-                #penalty = np.clip(np.log(penalty), -10, 0)
-                
-                # clip the value
-                penalty = np.clip(np.log(penalty), -10, 0).reshape(10000, 1)
+                # clip the value -> maybe tune later
+                # this becomes new reward
+                penalty = np.log(penalty).reshape(10000, 1)
                 
                 # print(penalty, rewards, penalty.shape, rewards.shape)
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
                 
                 # update the reward
                 assert penalty.shape == rewards.shape
-                rewards = rewards - self.penalty_coef * penalty
-                #rewards = rewards + self.penalty_coef * penalty
+                #reward = real reward + self.penalty_coef * penalty
+                rewards = self.penalty_coef * penalty # this will be returned as output
                 info["penalty"] = penalty
-                exit()
-                #print(penalty, penalty1)
 
             return next_obss, rewards, terminals, info
     
@@ -179,11 +172,12 @@ class MemDynamics(object):
         delta_obss = (next_obss - obss) / self.obss_abs_max
         delta_mem_obss = (mem_next_obss - mem_obss) / self.obss_abs_max
         print(np.max(obss), np.max(mem_obss))
-        #print(np.max(delta_mem_obss), np.max(mem_obss), np.max(mem_actions), np.max(mem_next_obss), np.max(mem_rewards))
         
+        #print(np.max(delta_mem_obss), np.max(mem_obss), np.max(mem_actions), np.max(mem_next_obss), np.max(mem_rewards))
         #rewards = self.scaler.transform(rewards)
         #mem_rewards = self.scaler.transform(mem_rewards)
         #print(np.max(abs(rewards)), np.min(abs(rewards)))
+        
         rewards = rewards / np.max(abs(rewards))
         mem_rewards = mem_rewards / np.max(abs(mem_rewards))
         

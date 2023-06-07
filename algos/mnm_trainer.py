@@ -38,7 +38,6 @@ hopper-medium-expert-v2: rollout-length=5,
 walker2d-medium-expert-v2: rollout-length=1, 
 """
 
-
 def get_args():
     parser = argparse.ArgumentParser()
     # basic
@@ -62,9 +61,11 @@ def get_args():
     parser.add_argument("--critic-lr", type=float, default=3e-4)
     parser.add_argument("--model-retain-epochs", type=int, default=5)
 
+    # tune
     parser.add_argument("--rollout-freq", type=int, default=1000)
     parser.add_argument("--rollout-batch-size", type=int, default=10000)
-    parser.add_argument("--rollout-length", type=int, default=5)
+    
+    parser.add_argument("--rollout-length", type=int, default=1)
     parser.add_argument("--penalty-coef", type=float, default=0.5)
     parser.add_argument("--real-ratio", type=float, default=0.05)
     parser.add_argument("--epoch", type=int, default=3000)
@@ -221,9 +222,6 @@ def train(args=get_args()):
     else:
         print(f'dynamics already exists. will be loaded from {dynamics_path}')
         dynamics.load(f'{dynamics_path}')
-    
-        
-    
         
     # create policy 
     if args.auto_alpha:
