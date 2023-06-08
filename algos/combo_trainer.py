@@ -1,100 +1,107 @@
 import argparse
+import os
+import sys
 import random
 
 import gym
 import d4rl
 
-import os
 import numpy as np
 import torch
 
 
 from offlinerlkit.nets import MLP
-from offlinerlkit.modules import Critic, MemActor, TanhDiagGaussian, ActorProb
-from offlinerlkit.utils.noise import GaussianNoise
-from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc
+from offlinerlkit.modules import ActorProb, Critic, TanhDiagGaussian, MemDynamicsModel
+from offlinerlkit.dynamics import MemDynamics
 from offlinerlkit.utils.scaler import StandardScaler
+from offlinerlkit.utils.termination_fns import get_termination_fn
+from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc
 from offlinerlkit.buffer import ReplayBuffer
 from offlinerlkit.utils.logger import Logger, make_log_dirs_td3bc
-from offlinerlkit.policy_trainer import MFPolicyTrainer
-from offlinerlkit.policy import TD3BCPolicy, MemTD3BCPolicy
-from offlinerlkit.modules import MemDynamicsModel
-from offlinerlkit.utils.termination_fns import get_termination_fn
-from offlinerlkit.dynamics import MemDynamics
-from offlinerlkit.policy import MNMPolicy, COMBOMNMPolicy
 from offlinerlkit.policy_trainer import MBPolicyTrainer
+from offlinerlkit.policy import COMBOMNMPolicy
+
 
 """
 suggested hypers
 
-halfcheetah-medium-v2: rollout-length=5, 
-hopper-medium-v2: rollout-length=5, 
-walker2d-medium-v2: rollout-length=5, 
-halfcheetah-medium-replay-v2: rollout-length=5, 
-hopper-medium-replay-v2: rollout-length=5, 
-walker2d-medium-replay-v2: rollout-length=1, 
-halfcheetah-medium-expert-v2: rollout-length=5, 
-hopper-medium-expert-v2: rollout-length=5, 
-walker2d-medium-expert-v2: rollout-length=1, 
+halfcheetah-medium-v2: rollout-length=5, cql-weight=0.5
+hopper-medium-v2: rollout-length=5, cql-weight=5.0
+walker2d-medium-v2: rollout-length=1, cql-weight=5.0
+halfcheetah-medium-replay-v2: rollout-length=5, cql-weight=0.5
+hopper-medium-replay-v2: rollout-length=5, cql-weight=0.5
+walker2d-medium-replay-v2: rollout-length=1, cql-weight=0.5
+halfcheetah-medium-expert-v2: rollout-length=5, cql-weight=5.0
+hopper-medium-expert-v2: rollout-length=5, cql-weight=5.0
+walker2d-medium-expert-v2: rollout-length=1, cql-weight=5.0
 """
 
 
 def get_args():
     parser = argparse.ArgumentParser()
-    # basic
-    parser.add_argument("--algo-name", type=str, default="mem_mnm", choices=["mnm", "mem_mnm"])
+    parser.add_argument("--algo-name", type=str, default="combo")
     parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-
-    # from mopo
-    parser.add_argument("--dynamics-lr", type=float, default=1e-3)
-    parser.add_argument("--dynamics-hidden-dims", type=int, nargs='*', default=[200, 200, 200, 200])
-    parser.add_argument("--dynamics-weight-decay", type=float, nargs='*', default=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5, 1e-4])
-    parser.add_argument("--dynamics-epochs", type=int, default=200)
+    parser.add_argument("--actor-lr", type=float, default=1e-4)
+    parser.add_argument("--critic-lr", type=float, default=3e-4)
+    parser.add_argument("--hidden-dims", type=int, nargs='*', default=[256, 256, 256])
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--alpha", type=float, default=0.2)
     parser.add_argument("--auto-alpha", default=True)
     parser.add_argument("--target-entropy", type=int, default=None)
     parser.add_argument("--alpha-lr", type=float, default=1e-4)
-    parser.add_argument("--actor-lr", type=float, default=1e-4)
-    parser.add_argument("--critic-lr", type=float, default=3e-4)
-    parser.add_argument("--model-retain-epochs", type=int, default=5)
-    
-    # tuning values
-    parser.add_argument("--rollout-freq", type=int, default=500)
-    parser.add_argument("--rollout-length", type=int, default=5)
-    parser.add_argument("--penalty-coef", type=float, default=0.5)
-    
-    parser.add_argument("--rollout-batch-size", type=int, default=10000)
-    parser.add_argument("--real-ratio", type=float, default=0.05)
-    parser.add_argument("--epoch", type=int, default=3000)
-    parser.add_argument("--step-per-epoch", type=int, default=1000)
-    parser.add_argument("--eval_episodes", type=int, default=10)
-    parser.add_argument("--batch-size", type=int, default=256)
 
-    # for memories
+    parser.add_argument("--cql-weight", type=float, default=5.0)
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--max-q-backup", type=bool, default=False)
+    parser.add_argument("--deterministic-backup", type=bool, default=True)
+    parser.add_argument("--with-lagrange", type=bool, default=False)
+    parser.add_argument("--lagrange-threshold", type=float, default=10.0)
+    parser.add_argument("--cql-alpha-lr", type=float, default=3e-4)
+    parser.add_argument("--num-repeat-actions", type=int, default=10)
+    parser.add_argument("--uniform-rollout", type=bool, default=False)
+    parser.add_argument("--rho-s", type=str, default="mix", choices=["model", "mix"])
+
+    parser.add_argument("--dynamics-lr", type=float, default=1e-3)
+    parser.add_argument("--dynamics-hidden-dims", type=int, nargs='*', default=[200, 200, 200, 200])
+    parser.add_argument("--dynamics-weight-decay", type=float, nargs='*', default=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5, 1e-4])
+    parser.add_argument("--n-ensemble", type=int, default=7)
+    parser.add_argument("--n-elites", type=int, default=5)
+    parser.add_argument("--rollout-freq", type=int, default=1000)
+    parser.add_argument("--rollout-batch-size", type=int, default=10000)
+    parser.add_argument("--rollout-length", type=int, default=5)
+    parser.add_argument("--model-retain-epochs", type=int, default=5)
+    parser.add_argument("--real-ratio", type=float, default=0.5)
+    parser.add_argument("--load-dynamics-path", type=str, default=None)
+
     parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
     parser.add_argument('--num_memories_frac', type=float, default=0.1)
     parser.add_argument('--Lipz', type=float, default=1.0)
     parser.add_argument('--lamda', type=float, default=1.0)
     parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
+    parser.add_argument("--epoch", type=int, default=1000)
+    parser.add_argument("--step-per-epoch", type=int, default=1000)
+    parser.add_argument("--eval_episodes", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    
+    parser.add_argument("--penalty-coef", type=float, default=0.5)
 
     return parser.parse_args()
 
 
 def train(args=get_args()):
+    # create env and dataset
     env = gym.make(args.task)
     dataset = qlearning_dataset_percentbc(args.task, args.chosen_percentage, args.num_memories_frac)
     if 'antmaze' in args.task:
         dataset["rewards"] -= 1.0
     args.obs_shape = (512,) if 'carla' in args.task else env.observation_space.shape
     args.obs_dim = np.prod(args.obs_shape)# create env and dataset
-    
-    args.action_dim = 2 if 'carla' in args.task else np.prod(env.action_space.shape)
+    args.action_dim = np.prod(env.action_space.shape)
     args.max_action = env.action_space.high[0]
-
+    
     # create buffer
     real_buffer = ReplayBuffer(
         buffer_size=len(dataset["observations"]),
@@ -114,9 +121,6 @@ def train(args=get_args()):
         device=args.device
     )
 
-    # scaler for normalizing observations
-    scaler = StandardScaler(device=args.device)
-
     # seed
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -125,23 +129,36 @@ def train(args=get_args()):
     torch.backends.cudnn.deterministic = True
     env.seed(args.seed)
 
-    # load perception encoder if carla
-    if 'carla' in args.task:
-        from offlinerlkit.carla.carla_model import CoILICRA
-        from offlinerlkit.carla.carla_config import MODEL_CONFIGURATION
-        carla_model_state_dict = torch.load('data/models/nocrash/resnet34imnet10S1/checkpoints/660000.pth')['state_dict']
-        carla_model = CoILICRA(MODEL_CONFIGURATION)
-        carla_model.load_state_dict(carla_model_state_dict)
-        carla_model.eval()
-        def perception_model(obs):
-            obs = obs.reshape(1, 48, 48, 3)
-            obs = torch.tensor(obs).permute(0, 3, 1, 2).float()
-            return carla_model.perception(obs)[0].detach().numpy()
-        print(f'loaded carla_model')
-    else:
-        perception_model = None
+    # create policy model
+    actor_backbone = MLP(input_dim=np.prod(args.obs_shape), hidden_dims=args.hidden_dims)
+    critic1_backbone = MLP(input_dim=np.prod(args.obs_shape) + args.action_dim, hidden_dims=args.hidden_dims)
+    critic2_backbone = MLP(input_dim=np.prod(args.obs_shape) + args.action_dim, hidden_dims=args.hidden_dims)
+    dist = TanhDiagGaussian(
+        latent_dim=getattr(actor_backbone, "output_dim"),
+        output_dim=args.action_dim,
+        unbounded=True,
+        conditioned_sigma=True
+    )
+    actor = ActorProb(actor_backbone, dist, args.device)
+    critic1 = Critic(critic1_backbone, args.device)
+    critic2 = Critic(critic2_backbone, args.device)
+    actor_optim = torch.optim.Adam(actor.parameters(), lr=args.actor_lr)
+    critic1_optim = torch.optim.Adam(critic1.parameters(), lr=args.critic_lr)
+    critic2_optim = torch.optim.Adam(critic2.parameters(), lr=args.critic_lr)
 
-    # create dynamics model
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(actor_optim, args.epoch)
+
+    if args.auto_alpha:
+        target_entropy = args.target_entropy if args.target_entropy \
+            else -np.prod(env.action_space.shape)
+        args.target_entropy = target_entropy
+        log_alpha = torch.zeros(1, requires_grad=True, device=args.device)
+        alpha_optim = torch.optim.Adam([log_alpha], lr=args.alpha_lr)
+        alpha = (target_entropy, log_alpha, alpha_optim)
+    else:
+        alpha = args.alpha
+
+    # create dynamics
     dynamics_model = MemDynamicsModel(
         input_dim=args.obs_dim + args.action_dim,
         hidden_dims=args.dynamics_hidden_dims,
@@ -156,35 +173,7 @@ def train(args=get_args()):
         weight_decay=args.dynamics_weight_decay[1],
     )
     
-    # create policy model
-    actor_hidden_dims = [1024, 1024] if 'carla' in args.task else [256, 256]
-    actor_backbone = MLP(input_dim=np.prod(args.obs_shape), hidden_dims=actor_hidden_dims)
-    critic1_backbone = MLP(input_dim=np.prod(args.obs_shape)+args.action_dim, hidden_dims=[256, 256])
-    critic2_backbone = MLP(input_dim=np.prod(args.obs_shape)+args.action_dim, hidden_dims=[256, 256])
-    dist = TanhDiagGaussian(
-        latent_dim=getattr(actor_backbone, "output_dim"),
-        output_dim=args.action_dim,
-        unbounded=True,
-        conditioned_sigma=True
-    )
-    
-    # LATER ON, ADD THIS BACK! CAUSE IT WOULD BE GREAT TO HAVE MCNN POLICY AND MODEL!
-    # Probably will have to add dist attribute to MemActor
-    # if "mem" in args.algo_name: 
-    #     actor = MemActor(actor_backbone, args.action_dim, device=args.device, Lipz=args.Lipz, lamda=args.lamda)
-    # else:
-    #     actor = ActorProb(actor_backbone, dist, args.device)
-    
-    actor = ActorProb(actor_backbone, dist, args.device)
-    critic1 = Critic(critic1_backbone, args.device)
-    critic2 = Critic(critic2_backbone, args.device)
-    actor_optim = torch.optim.Adam(actor.parameters(), lr=args.actor_lr)
-    critic1_optim = torch.optim.Adam(critic1.parameters(), lr=args.critic_lr)
-    critic2_optim = torch.optim.Adam(critic2.parameters(), lr=args.critic_lr)
-
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(actor_optim, args.epoch)
-
-    # create termination_fn and dynamics
+    scaler = StandardScaler()
     termination_fn = get_termination_fn(task=args.task)
     dynamics = MemDynamics(
         dynamics_model,
@@ -193,14 +182,13 @@ def train(args=get_args()):
         termination_fn,
         dataset=dataset,
         penalty_coef=args.penalty_coef,
-        # train_horizon=args.dynamics_train_horizon,
     )
     
     # log
     record_params = ["chosen_percentage", "rollout_length"]
     if "mem" in args.algo_name:
         record_params += ["num_memories_frac", "Lipz", "lamda"]
-
+        
     log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=args.seed, args=vars(args), record_params=record_params)
     # key: output file name, value: output handler type
     output_config = {
@@ -211,9 +199,7 @@ def train(args=get_args()):
     logger = Logger(log_dirs, output_config)
     logger.log_hyperparameters(vars(args))
     
-    # train + save dynamics
-    #dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
-    
+    # dynamics training / loading 
     dynamics_path = f'{logger.model_dir}'
     if not os.path.exists(f'{dynamics_path}'):
         # dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
@@ -221,23 +207,12 @@ def train(args=get_args()):
     else:
         print(f'dynamics already exists. will be loaded from {dynamics_path}')
         dynamics.load(f'{dynamics_path}')
-    
-        
-    # create policy 
-    if args.auto_alpha:
-        target_entropy = args.target_entropy if args.target_entropy \
-            else -np.prod(env.action_space.shape)
 
-        args.target_entropy = target_entropy
+    # if args.load_dynamics_path:
+    #     dynamics.load(args.load_dynamics_path)
 
-        log_alpha = torch.zeros(1, requires_grad=True, device=args.device)
-        alpha_optim = torch.optim.Adam([log_alpha], lr=args.alpha_lr)
-        alpha = (target_entropy, log_alpha, alpha_optim)
-    else:
-        alpha = args.alpha
-    
-    # if use combo, need action_space
-    policy = MNMPolicy(
+    # create policy
+    policy = COMBOMNMPolicy(
         dynamics,
         actor,
         critic1,
@@ -245,12 +220,24 @@ def train(args=get_args()):
         actor_optim,
         critic1_optim,
         critic2_optim,
+        action_space=env.action_space,
         tau=args.tau,
         gamma=args.gamma,
-        alpha=alpha
+        alpha=alpha,
+        cql_weight=args.cql_weight,
+        temperature=args.temperature,
+        max_q_backup=args.max_q_backup,
+        deterministic_backup=args.deterministic_backup,
+        with_lagrange=args.with_lagrange,
+        lagrange_threshold=args.lagrange_threshold,
+        cql_alpha_lr=args.cql_alpha_lr,
+        num_repeart_actions=args.num_repeat_actions,
+        uniform_rollout=args.uniform_rollout,
+        rho_s=args.rho_s
     )
 
-    # create trainer(s)
+
+    # create policy trainer
     policy_trainer = MBPolicyTrainer(
         policy=policy,
         eval_env=env,
@@ -265,10 +252,9 @@ def train(args=get_args()):
         eval_episodes=args.eval_episodes,
         lr_scheduler=lr_scheduler
     )
-
+    
     # train policy
     policy_trainer.train(use_tqdm=args.use_tqdm)
-
 
 if __name__ == "__main__":
     train()

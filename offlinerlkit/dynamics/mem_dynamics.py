@@ -120,9 +120,11 @@ class MemDynamics(object):
                 penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
                 #penalty = np.clip(penalty.cpu().numpy(), -10, 0)
                 penalty = -1 * np.log(penalty).reshape(10000, 1)
+                #print(penalty)
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
 
                 assert penalty.shape == rewards.shape
+                #print(rewards)
                 rewards = rewards + self.penalty_coef * penalty
                 info["penalty"] = penalty
 

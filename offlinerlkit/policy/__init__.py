@@ -18,6 +18,7 @@ from offlinerlkit.policy.model_based.mnm import MNMPolicy
 from offlinerlkit.policy.model_based.mobile import MOBILEPolicy
 from offlinerlkit.policy.model_based.rambo import RAMBOPolicy
 from offlinerlkit.policy.model_based.combo import COMBOPolicy
+from offlinerlkit.policy.model_based.combo_mnm import COMBOMNMPolicy
 
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     "MNMPolicy",
     "MOBILEPolicy",
     "RAMBOPolicy",
-    "COMBOPolicy"
+    "COMBOPolicy",
+    "COMBOMNMPolicy"
 ]
