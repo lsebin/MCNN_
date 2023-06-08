@@ -57,6 +57,7 @@ class MemDynamics(object):
         self.nodes_next_obs = torch.from_numpy(dataset["memories_next_obs"]).float().to(self.device)
         self.nodes_rewards = torch.from_numpy(dataset["memories_rewards"]).float().to(self.device).unsqueeze(1)
         self.nodes_inputs = torch.cat([self.nodes_obs, self.nodes_actions], dim=1)
+        self.nodes_next_inputs = torch.cat([self.nodes_obs], dim=1)
 
         self.obss_abs_max = np.max(np.abs(dataset["observations"]), axis=0, keepdims=True)
         self.obss_abs_max_tensor = torch.as_tensor(self.obss_abs_max).to(self.model.device)
@@ -77,6 +78,11 @@ class MemDynamics(object):
         mem_inputs = torch.cat([mem_obss, mem_actions], dim=1)
         mem_targets = torch.cat([delta_mem_obss, mem_rewards], dim=1)
         return mem_inputs, mem_targets
+    
+    def find_memories_penalty (self, inputs: torch.Tensor) -> np.ndarray:
+        _, closest_nodes = torch.cdist(inputs, self.nodes_next_inputs).min(dim=1)	   
+        mem_obss = self.nodes_obs[closest_nodes, :]	        
+        return mem_obss.cpu().numpy()	      
 
     def step(
         self,
@@ -106,21 +112,18 @@ class MemDynamics(object):
             # dist = dist.cpu().numpy()
 
             if self.penalty_coef:
-                penalty = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
-                # should i find what action is actually executed and build changing values out of that?
-                # from mb_policy_trainer -> maybe this part should be at mnm.py and just input true next_obss
-                # action = self.policy.select_action(obs.reshape(1, -1), deterministic=True)
-                # next_obs, reward, terminal, _ = self.eval_env.step(action.flatten()) -> looks like we also need env
-                # mem_inputs_model, mem_targets_model = self.find_memories(next_obss) 
-                # mem_inputs_real, mem_targets_real = self.find_memories(next_obss_real) 
-                # penalty = (np.linarg(next_obss, ))
+                #penalty = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
+                mem_next_model = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
                 # print(f'{rewards.min()=} {rewards.max()=}')
                 # print(f'before clip penalty.min()={penalty.min().item()} penalty.max()={penalty.max()=}')
-                penalty = np.clip(penalty.cpu().numpy(), -10, 0)
+                delta_mem_obss_model = np.power(next_obss-mem_next_model, 2)
+                penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
+                #penalty = np.clip(penalty.cpu().numpy(), -10, 0)
+                penalty = -1 * np.log(penalty).reshape(10000, 1)
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
 
                 assert penalty.shape == rewards.shape
-                rewards = rewards - self.penalty_coef * penalty
+                rewards = rewards + self.penalty_coef * penalty
                 info["penalty"] = penalty
 
             return next_obss, rewards, terminals, info
