@@ -43,7 +43,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     # basic
     parser.add_argument("--algo-name", type=str, default="mem_mnm", choices=["mnm", "mem_mnm"])
-    parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
+    parser.add_argument("--task", type=str, default="walker2d-medium-replay-v2")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
@@ -65,7 +65,7 @@ def get_args():
     # tuning values
     parser.add_argument("--rollout-freq", type=int, default=500)
     parser.add_argument("--rollout-length", type=int, default=5)
-    parser.add_argument("--penalty-coef", type=float, default=0.5)
+    parser.add_argument("--penalty-coef", type=float, default=0.75)
     
     parser.add_argument("--rollout-batch-size", type=int, default=10000)
     parser.add_argument("--real-ratio", type=float, default=0.05)
@@ -212,15 +212,18 @@ def train(args=get_args()):
     logger.log_hyperparameters(vars(args))
     
     # train + save dynamics
-    #dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
+    dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
     
+    exit()
     dynamics_path = f'{logger.model_dir}'
     if not os.path.exists(f'{dynamics_path}'):
-        # dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
+        dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
         print(f'finished training dynamics and exiting. Uncomment exit here to go to train policy after everything worked fine with dynamics.')
     else:
         print(f'dynamics already exists. will be loaded from {dynamics_path}')
         dynamics.load(f'{dynamics_path}')
+        
+   
     
         
     # create policy 

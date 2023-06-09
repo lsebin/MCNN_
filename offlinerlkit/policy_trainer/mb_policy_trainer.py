@@ -66,8 +66,8 @@ class MBPolicyTrainer:
                     # don't need fake buffer -> now use only to compute new reward function not to generate fake batches 
                     self.fake_buffer.add_batch(**rollout_transitions)
                     self.logger.log(
-                        "num rollout transitions: {}, reward mean: {:.4f}".\
-                            format(rollout_info["num_transitions"], rollout_info["reward_mean"])
+                        "num rollout transitions: {}, reward mean: {:.4f} raw reward mean: {:.4f} penalty mean: {:.4f} ".\
+                            format(rollout_info["num_transitions"], rollout_info["reward_mean"],  rollout_info["raw_reward_mean"],  rollout_info["penalty_mean"])
                     )
                     for _key, _value in rollout_info.items():
                         self.logger.logkv_mean("rollout_info/"+_key, _value)

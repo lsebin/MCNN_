@@ -111,7 +111,8 @@ class MemDynamics(object):
             info["raw_reward"] = rewards
             # dist = dist.cpu().numpy()
 
-            if self.penalty_coef:
+            #if self.penalty_coef:
+            if 1:
                 #penalty = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
                 mem_next_model = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
                 # print(f'{rewards.min()=} {rewards.max()=}')
@@ -119,8 +120,9 @@ class MemDynamics(object):
                 delta_mem_obss_model = np.power(next_obss-mem_next_model, 2)
                 penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
                 #penalty = np.clip(penalty.cpu().numpy(), -10, 0)
-                penalty = -1 * np.log(penalty).reshape(10000, 1)
-                #print(penalty)
+                #penalty = -1 * np.log(penalty).reshape(10000, 1)
+                penalty = -1 * penalty.reshape(10000, 1)
+
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
 
                 assert penalty.shape == rewards.shape

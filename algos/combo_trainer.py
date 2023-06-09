@@ -52,7 +52,7 @@ def get_args():
     parser.add_argument("--target-entropy", type=int, default=None)
     parser.add_argument("--alpha-lr", type=float, default=1e-4)
 
-    parser.add_argument("--cql-weight", type=float, default=5.0)
+    parser.add_argument("--cql-weight", type=float, default=0.5)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-q-backup", type=bool, default=False)
     parser.add_argument("--deterministic-backup", type=bool, default=True)
@@ -68,11 +68,11 @@ def get_args():
     parser.add_argument("--dynamics-weight-decay", type=float, nargs='*', default=[2.5e-5, 5e-5, 7.5e-5, 7.5e-5, 1e-4])
     parser.add_argument("--n-ensemble", type=int, default=7)
     parser.add_argument("--n-elites", type=int, default=5)
-    parser.add_argument("--rollout-freq", type=int, default=1000)
+    parser.add_argument("--rollout-freq", type=int, default=500)
     parser.add_argument("--rollout-batch-size", type=int, default=10000)
     parser.add_argument("--rollout-length", type=int, default=5)
     parser.add_argument("--model-retain-epochs", type=int, default=5)
-    parser.add_argument("--real-ratio", type=float, default=0.5)
+    parser.add_argument("--real-ratio", type=float, default=0.3)
     parser.add_argument("--load-dynamics-path", type=str, default=None)
 
     parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
@@ -86,7 +86,7 @@ def get_args():
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     
-    parser.add_argument("--penalty-coef", type=float, default=0.5)
+    parser.add_argument("--penalty-coef", type=float, default=0)
 
     return parser.parse_args()
 
