@@ -11,15 +11,14 @@ import torch
 
 
 from offlinerlkit.nets import MLP
-from offlinerlkit.modules import ActorProb, Critic, TanhDiagGaussian, MemDynamicsModel
-from offlinerlkit.dynamics import MemDynamics
+from offlinerlkit.modules import ActorProb, Critic, TanhDiagGaussian, EnsembleDynamicsModel, MemDynamicsModel
+from offlinerlkit.dynamics import EnsembleDynamics, MemDynamics
 from offlinerlkit.utils.scaler import StandardScaler
 from offlinerlkit.utils.termination_fns import get_termination_fn
-from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc
+from offlinerlkit.utils.load_dataset import qlearning_dataset, qlearning_dataset_memories
 from offlinerlkit.buffer import ReplayBuffer
-from offlinerlkit.utils.logger import Logger, make_log_dirs_td3bc
+from offlinerlkit.utils.logger import Logger, make_log_dirs, make_log_dirs_origin
 from offlinerlkit.policy_trainer import MBPolicyTrainer
-#from offlinerlkit.policy import COMBOMNMPolicy
 from offlinerlkit.policy import COMBOPolicy
 
 
@@ -40,9 +39,9 @@ walker2d-medium-expert-v2: rollout-length=1, cql-weight=5.0
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo-name", type=str, default="combo")
-    parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--algo-name", type=str, default="combo_memdynamic")
+    parser.add_argument("--task", type=str, default="walker2d-medium-replay-v2")
+    parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--actor-lr", type=float, default=1e-4)
     parser.add_argument("--critic-lr", type=float, default=3e-4)
     parser.add_argument("--hidden-dims", type=int, nargs='*', default=[256, 256, 256])
@@ -70,17 +69,12 @@ def get_args():
     parser.add_argument("--n-ensemble", type=int, default=7)
     parser.add_argument("--n-elites", type=int, default=5)
     parser.add_argument("--rollout-freq", type=int, default=1000)
-    parser.add_argument("--rollout-batch-size", type=int, default=10000)
+    parser.add_argument("--rollout-batch-size", type=int, default=50000)
     parser.add_argument("--rollout-length", type=int, default=5)
     parser.add_argument("--model-retain-epochs", type=int, default=5)
     parser.add_argument("--real-ratio", type=float, default=0.5)
     parser.add_argument("--load-dynamics-path", type=str, default=None)
 
-    parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
-    parser.add_argument('--num_memories_frac', type=float, default=0.1)
-    parser.add_argument('--Lipz', type=float, default=1.0)
-    parser.add_argument('--lamda', type=float, default=1.0)
-    parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
     parser.add_argument("--epoch", type=int, default=1000)
     parser.add_argument("--step-per-epoch", type=int, default=1000)
     parser.add_argument("--eval_episodes", type=int, default=10)
@@ -88,7 +82,12 @@ def get_args():
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     
     parser.add_argument("--penalty-coef", type=float, default=0)
+    parser.add_argument('--Lipz', type=float, default=1.0)
+    parser.add_argument('--lamda', type=float, default=1.0)
+    parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
+    parser.add_argument('--num_memories_frac', type=float, default=0.1)
     parser.add_argument("--dynamics-epochs", type=int, default=200)
+    parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
 
     return parser.parse_args()
 
@@ -96,32 +95,11 @@ def get_args():
 def train(args=get_args()):
     # create env and dataset
     env = gym.make(args.task)
-    dataset = qlearning_dataset_percentbc(args.task, args.chosen_percentage, args.num_memories_frac)
-    if 'antmaze' in args.task:
-        dataset["rewards"] -= 1.0
-    args.obs_shape = (512,) if 'carla' in args.task else env.observation_space.shape
+    dataset = qlearning_dataset_memories(args.task, args.chosen_percentage, args.num_memories_frac)
+    args.obs_shape = env.observation_space.shape
     args.obs_dim = np.prod(args.obs_shape)# create env and dataset
     args.action_dim = np.prod(env.action_space.shape)
     args.max_action = env.action_space.high[0]
-    
-    # create buffer
-    real_buffer = ReplayBuffer(
-        buffer_size=len(dataset["observations"]),
-        obs_shape=args.obs_shape,
-        obs_dtype=np.float32,
-        action_dim=args.action_dim,
-        action_dtype=np.float32,
-        device=args.device
-    )
-    real_buffer.load_dataset(dataset)
-    fake_buffer = ReplayBuffer(
-        buffer_size=args.rollout_batch_size*args.rollout_length*args.model_retain_epochs,
-        obs_shape=args.obs_shape,
-        obs_dtype=np.float32,
-        action_dim=args.action_dim,
-        action_dtype=np.float32,
-        device=args.device
-    )
 
     # seed
     random.seed(args.seed)
@@ -161,6 +139,18 @@ def train(args=get_args()):
         alpha = args.alpha
 
     # create dynamics
+    load_dynamics_model = True if args.load_dynamics_path else False
+    
+    """
+    dynamics_model = EnsembleDynamicsModel(
+        obs_dim=np.prod(args.obs_shape),
+        action_dim=args.action_dim,
+        hidden_dims=args.dynamics_hidden_dims,
+        num_ensemble=args.n_ensemble,
+        num_elites=args.n_elites,
+        weight_decays=args.dynamics_weight_decay,
+        device=args.device
+    ) """
     dynamics_model = MemDynamicsModel(
         input_dim=args.obs_dim + args.action_dim,
         hidden_dims=args.dynamics_hidden_dims,
@@ -169,12 +159,10 @@ def train(args=get_args()):
         lamda=args.lamda,
         device=args.device
     )
-    dynamics_optim = torch.optim.AdamW(
+    dynamics_optim = torch.optim.Adam(
         dynamics_model.parameters(),
-        lr=args.dynamics_lr,
-        weight_decay=args.dynamics_weight_decay[1],
+        lr=args.dynamics_lr
     )
-    
     scaler = StandardScaler()
     termination_fn = get_termination_fn(task=args.task)
     dynamics = MemDynamics(
@@ -185,36 +173,17 @@ def train(args=get_args()):
         dataset=dataset,
         penalty_coef=args.penalty_coef,
     )
-    
-    # log
-    record_params = ["chosen_percentage", "rollout_length"]
-    if "mem" in args.algo_name:
-        record_params += ["num_memories_frac", "Lipz", "lamda"]
-        
-    log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=args.seed, args=vars(args), record_params=record_params)
-    # key: output file name, value: output handler type
-    output_config = {
-        "consoleout_backup": "stdout",
-        "policy_training_progress": "csv",
-        "tb": "tensorboard"
-    }
-    logger = Logger(log_dirs, output_config)
-    logger.log_hyperparameters(vars(args))
-    
-    
-    dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
-    
-    # dynamics training / loading 
-    dynamics_path = f'{logger.model_dir}'
-    if not os.path.exists(f'{dynamics_path}'):
-        # dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=args.use_tqdm)
-        print(f'finished training dynamics and exiting. Uncomment exit here to go to train policy after everything worked fine with dynamics.')
-    else:
-        print(f'dynamics already exists. will be loaded from {dynamics_path}')
-        #dynamics.load(f'{dynamics_path}')
+    """"
+    dynamics = EnsembleDynamics(
+        dynamics_model,
+        dynamics_optim,
+        scaler,
+        termination_fn
+    )
+    """
 
-    # if args.load_dynamics_path:
-    #     dynamics.load(args.load_dynamics_path)
+    if load_dynamics_model:
+        dynamics.load(args.load_dynamics_path)
 
     # create policy
     policy = COMBOPolicy(
@@ -241,6 +210,36 @@ def train(args=get_args()):
         rho_s=args.rho_s
     )
 
+    # create buffer
+    real_buffer = ReplayBuffer(
+        buffer_size=len(dataset["observations"]),
+        obs_shape=args.obs_shape,
+        obs_dtype=np.float32,
+        action_dim=args.action_dim,
+        action_dtype=np.float32,
+        device=args.device
+    )
+    real_buffer.load_dataset(dataset)
+    fake_buffer = ReplayBuffer(
+        buffer_size=args.rollout_batch_size*args.rollout_length*args.model_retain_epochs,
+        obs_shape=args.obs_shape,
+        obs_dtype=np.float32,
+        action_dim=args.action_dim,
+        action_dtype=np.float32,
+        device=args.device
+    )
+
+    # log
+    log_dirs = make_log_dirs_origin(args.task, args.algo_name, args.seed, vars(args))
+    # key: output file name, value: output handler type
+    output_config = {
+        "consoleout_backup": "stdout",
+        "policy_training_progress": "csv",
+        "dynamics_training_progress": "csv",
+        "tb": "tensorboard"
+    }
+    logger = Logger(log_dirs, output_config)
+    logger.log_hyperparameters(vars(args))
 
     # create policy trainer
     policy_trainer = MBPolicyTrainer(
@@ -257,9 +256,14 @@ def train(args=get_args()):
         eval_episodes=args.eval_episodes,
         lr_scheduler=lr_scheduler
     )
+
+    # train
+    if not load_dynamics_model:
+        #dynamics.train(real_buffer.sample_all(), logger=logger, max_epochs_since_update=5)
+        dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=0)
     
-    # train policy
-    policy_trainer.train(use_tqdm=args.use_tqdm)
+    policy_trainer.train()
+
 
 if __name__ == "__main__":
     train()

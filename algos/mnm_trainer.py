@@ -43,8 +43,8 @@ def get_args():
     parser = argparse.ArgumentParser()
     # basic
     parser.add_argument("--algo-name", type=str, default="mem_mnm", choices=["mnm", "mem_mnm"])
-    parser.add_argument("--task", type=str, default="walker2d-medium-replay-v2")
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--task", type=str, default="hopper-medium-replay-v2")
+    parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
     # from mopo
@@ -63,7 +63,7 @@ def get_args():
     parser.add_argument("--model-retain-epochs", type=int, default=5)
     
     # tuning values
-    parser.add_argument("--rollout-freq", type=int, default=500)
+    parser.add_argument("--rollout-freq", type=int, default=1000)
     parser.add_argument("--rollout-length", type=int, default=5)
     parser.add_argument("--penalty-coef", type=float, default=0.75)
     
@@ -201,7 +201,8 @@ def train(args=get_args()):
     if "mem" in args.algo_name:
         record_params += ["num_memories_frac", "Lipz", "lamda"]
 
-    log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=args.seed, args=vars(args), record_params=record_params)
+    #log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=args.seed, args=vars(args), record_params=record_params)
+    log_dirs = make_log_dirs_td3bc(task_name=args.task, chosen_percentage=args.chosen_percentage, algo_name=args.algo_name, seed=0, args=vars(args), record_params=record_params)
     # key: output file name, value: output handler type
     output_config = {
         "consoleout_backup": "stdout",

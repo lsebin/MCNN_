@@ -1,9 +1,9 @@
-mkdir algos/logs
-mkdir algos/exp
+#mkdir algos/logs
+#mkdir algos/exp
 
 percent=1.0
-AlgoType=combo # bc OR td3bc
-SEED=0
+AlgoType=combo_memdynamic # bc OR td3bc
+SEED=1
 
 # hammer-human-v1 pen-human-v1 relocate-human-v1 door-human-v1
 # hammer-expert-v1 pen-expert-v1 relocate-expert-v1 door-expert-v1
@@ -11,16 +11,45 @@ SEED=0
 # carla-lane-v0 
 # carla-town-v0
 
-task='halfcheetah-medium-replay-v2'
-Lipz = 1.0
-lamda = 1.0
+#task='halfcheetah-medium-replay-v2'
+Lipz=1.0
+lamda=1.0
 
-F=0.1
-for coef in 0.01 0.025 0.05 0.075 0.1
+for TASK in halfcheetah walker2d hopper
 do
     GPU=1
-    CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/combo_trainer.py --use-tqdm 0 > algos/logs_td3bc/mem_${AlgoType}_${task}_frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_penalty_coef${coef}.log &
-done 
+    CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${TASK}-medium-replay-v2 > algos/logs/mem_${AlgoType}_${TASK}-medium-replay-v2_frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}.log &
+done
+
+
+
+F=0.1
+
+# for rollout in 1 3 5 7 9
+# do
+#     for rr in 0.05 0.10 0.15 0.20 0.25 0.30 0.35
+#     do
+#         GPU=1
+#         CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/combo_trainer.py  --real-ratio ${rr} --rollout-length ${rollout} --use-tqdm 0 > algos/logs/mem_${AlgoType}_${task}_frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}.log &
+#     done
+# done
+
+# for rollout in 1 3 5 7 9
+# do
+#     for rr in 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75
+#     do
+#         GPU=0
+#         CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/combo_trainer.py  --real-ratio ${rr} --rollout-length ${rollout} --use-tqdm 0 > algos/logs/mem_${AlgoType}_${task}_frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}.log &
+#     done
+# done
+
+
+# F=0.1
+# for coef in 0.01 0.025 0.05 0.075 0.1
+# do
+#     GPU=1
+#     CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/combo_trainer.py  --penalty-coef ${coef} --use-tqdm 0 > algos/logs/mem_${AlgoType}_${task}_frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_penalty_coef${coef}.log &
+# done 
 
 
 

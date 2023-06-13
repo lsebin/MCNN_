@@ -381,6 +381,22 @@ def make_log_dirs(
     os.makedirs(log_dirs, exist_ok=True)
     return log_dirs
 
+def make_log_dirs_origin(
+    task_name: str,
+    algo_name: str,
+    seed: int,
+    args: Dict,
+    record_params: Optional[List]=None
+) -> str:
+    if record_params is not None:
+        for param_name in record_params:
+            algo_name += f"&{param_name}={args[param_name]}"
+    timestamp = datetime.datetime.now().strftime("%y-%m%d-%H%M%S")
+    exp_name = f"seed_{seed}" #&timestamp_{timestamp}"
+    log_dirs = os.path.join("log", task_name, algo_name, exp_name)
+    os.makedirs(log_dirs)
+    return log_dirs
+
 
 def load_args(load_path: str) -> argparse.ArgumentParser:
     args_dict = {}

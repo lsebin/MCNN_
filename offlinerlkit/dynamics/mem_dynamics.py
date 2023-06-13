@@ -158,7 +158,10 @@ class MemDynamics(object):
 
         delta_obss = (next_obss - obss) / self.obss_abs_max
         delta_mem_obss = (mem_next_obss - mem_obss) / self.obss_abs_max
-        print(np.max(obss), np.max(mem_obss))
+        #print(mem_next_obss)
+        #print(mem_obss)
+        
+        #print(np.max(obss), np.max(mem_obss))
         #print(np.max(delta_mem_obss), np.max(mem_obss), np.max(mem_actions), np.max(mem_next_obss), np.max(mem_rewards))
         
         #rewards = self.scaler.transform(rewards)
@@ -199,13 +202,15 @@ class MemDynamics(object):
         self.use_tqdm = use_tqdm
         #train_inputs, train_targets, train_mem_inputs, train_mem_targets, holdout_inputs, holdout_targets, holdout_mem_inputs, holdout_mem_targets = self.format_samples_for_training(data, full_dataset)
         train_inputs, train_targets, train_mem_inputs, train_mem_targets = self.format_samples_for_training(data, full_dataset)
-
+        
+        
         self.scaler.fit(train_inputs)
         train_inputs = self.scaler.transform(train_inputs)
         #holdout_inputs = self.scaler.transform(holdout_inputs)
         train_mem_inputs = self.scaler.transform(train_mem_inputs)
+        
         #holdout_mem_inputs = self.scaler.transform(holdout_mem_inputs)
-        print(torch.max(torch.from_numpy(train_mem_inputs)), torch.max(torch.from_numpy(train_inputs)), np.max(train_targets), np.max(train_mem_targets))
+        #print(torch.max(torch.from_numpy(train_mem_inputs)), torch.max(torch.from_numpy(train_inputs)), np.max(train_targets), np.max(train_mem_targets))
 
         trainset = MemDataset(train_inputs, train_targets, train_mem_inputs, train_mem_targets)
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
@@ -230,6 +235,7 @@ class MemDynamics(object):
             logger.set_timestep(epoch)
             logger.logkv("beta", self.beta)
             logger.dumpkvs(exclude=["policy_training_progress"])
+            
             
             if (max_epochs and (epoch >= max_epochs)): 
                 break        
