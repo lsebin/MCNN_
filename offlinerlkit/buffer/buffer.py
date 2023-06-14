@@ -108,9 +108,9 @@ class ReplayBuffer:
         self._size = len(observations)
         
     # For ensemble dynamics -> use the load_datset above since it does not need mem_
-    """
     
-    def load_dataset(self, dataset: Dict[str, np.ndarray]) -> None:
+    
+    def load_dataset_original(self, dataset: Dict[str, np.ndarray]) -> None:
         observations = np.array(dataset["observations"], dtype=self.obs_dtype)
         next_observations = np.array(dataset["next_observations"], dtype=self.obs_dtype)
         actions = np.array(dataset["actions"], dtype=self.action_dtype)
@@ -125,7 +125,7 @@ class ReplayBuffer:
 
         self._ptr = len(observations)
         self._size = len(observations) 
-    """
+    
     
     def normalize_obs(self, eps: float = 1e-3) -> Tuple[np.ndarray, np.ndarray]:
         mean = self.observations.mean(0, keepdims=True)

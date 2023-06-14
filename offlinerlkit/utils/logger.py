@@ -361,7 +361,7 @@ def make_log_dirs_td3bc(
     os.makedirs(log_dirs, exist_ok=True)
     return log_dirs
 
-
+"""
 def make_log_dirs(
     task_name: str,
     train_size: float, 
@@ -378,6 +378,25 @@ def make_log_dirs(
     exp_name = f"seed_{seed}"#+"&timestamp_{timestamp}"
     os.makedirs(root_dir, exist_ok=True)
     log_dirs = os.path.join(root_dir, f'{task_name}_{train_size}_train', algo_name, exp_name)
+    os.makedirs(log_dirs, exist_ok=True)
+    return log_dirs
+    """
+
+def make_log_dirs(
+    task_name: str,
+    algo_name: str,
+    seed: int,
+    args: Dict,
+    record_params: Optional[List]=None,
+    root_dir = "algos/exp",
+) -> str:
+    if record_params is not None:
+        for param_name in record_params:
+            algo_name += f"&{param_name}={args[param_name]}"
+    timestamp = datetime.datetime.now().strftime("%y-%m%d-%H%M%S")
+    exp_name = f"seed_{seed}"#+"&timestamp_{timestamp}"
+    os.makedirs(root_dir, exist_ok=True)
+    log_dirs = os.path.join(root_dir, task_name, algo_name, exp_name)
     os.makedirs(log_dirs, exist_ok=True)
     return log_dirs
 

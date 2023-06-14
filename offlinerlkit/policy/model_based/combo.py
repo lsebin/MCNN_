@@ -103,6 +103,7 @@ class COMBOPolicy(CQLPolicy):
         
         for k, v in rollout_transitions.items():
             rollout_transitions[k] = np.concatenate(v, axis=0)
+            
 
         return rollout_transitions, \
             {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean()}

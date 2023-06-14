@@ -95,13 +95,26 @@ class MemDynamics(object):
             inputs = np.concatenate([obss, actions], axis=-1)
             inputs = torch.from_numpy(inputs).float().to(self.device)
             mem_inputs, mem_targets = self.find_memories(inputs)
-
+            
+            #print(mem_targets)
             inputs = self.scaler.transform_tensor(inputs)
             mem_inputs = self.scaler.transform_tensor(mem_inputs)
             dist = torch.norm(inputs - mem_inputs, dim=1).unsqueeze(1)
             
-            preds = self.model(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
+            #preds = self.model.forward(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
+            
+            device = mem_targets.device
+            memtarget_data= mem_targets.cpu().numpy()
+            memtarget_data = memtarget_data/ np.max(abs(memtarget_data))
+            mem_targets = torch.tensor(memtarget_data, device=device)
+            
+            #print(mem_targets)
+            #exit()
+            
+            preds = self.model.forward(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
             # unnormalize predicted next states
+            #print(preds)
+            #print("step")
             preds[..., :-1] = preds[..., :-1] * self.obss_abs_max_tensor
 
             next_obss = preds[:, :-1].cpu().numpy() + obss
