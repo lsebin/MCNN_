@@ -40,7 +40,7 @@ walker2d-medium-expert-v2: rollout-length=1, cql-weight=5.0
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--algo-name", type=str, default="combo_memdynamic")
-    parser.add_argument("--task", type=str, default="walker2d-medium-replay-v2")
+    parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--actor-lr", type=float, default=1e-4)
     parser.add_argument("--critic-lr", type=float, default=3e-4)
@@ -139,7 +139,6 @@ def train(args=get_args()):
         alpha = args.alpha
 
     # create dynamics
-    load_dynamics_model = True if args.load_dynamics_path else False
     
     """
     dynamics_model = EnsembleDynamicsModel(
@@ -181,9 +180,6 @@ def train(args=get_args()):
         termination_fn
     )
     """
-
-    if load_dynamics_model:
-        dynamics.load(args.load_dynamics_path)
 
     # create policy
     policy = COMBOPolicy(
@@ -228,9 +224,12 @@ def train(args=get_args()):
         action_dtype=np.float32,
         device=args.device
     )
+    
+    load_dynamics_model = True if os.path.exists(f'log/{args.task}/{args.algo_name}/seed_{args.seed}_Lipz_{args.Lipz}_lamda_{args.lamda}/model') else False
+    print(load_dynamics_model)
 
     # log
-    log_dirs = make_log_dirs_origin(args.task, args.algo_name, args.seed, vars(args))
+    log_dirs = make_log_dirs_origin(args.task, args.algo_name, args.seed, args.Lipz, args.lamda, vars(args))
     # key: output file name, value: output handler type
     output_config = {
         "consoleout_backup": "stdout",
@@ -257,9 +256,15 @@ def train(args=get_args()):
         lr_scheduler=lr_scheduler
     )
 
+    if load_dynamics_model:# 
+        args.load_dynamics_path = logger.model_dir
+        print(f"loading dynamics model from {args.load_dynamics_path}")
+        dynamics.load(args.load_dynamics_path)
+    else:
     # train
-    if not load_dynamics_model:
+    #if not load_dynamics_model:
         #dynamics.train(real_buffer.sample_all(), logger=logger, max_epochs_since_update=5)
+        print("Dynamics model does not exist, training")
         dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=0)
     
     policy_trainer.train()

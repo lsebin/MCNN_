@@ -385,6 +385,8 @@ def make_log_dirs_origin(
     task_name: str,
     algo_name: str,
     seed: int,
+    Lipz: float,
+    lamda: float,
     args: Dict,
     record_params: Optional[List]=None
 ) -> str:
@@ -392,9 +394,10 @@ def make_log_dirs_origin(
         for param_name in record_params:
             algo_name += f"&{param_name}={args[param_name]}"
     timestamp = datetime.datetime.now().strftime("%y-%m%d-%H%M%S")
-    exp_name = f"seed_{seed}" #&timestamp_{timestamp}"
+    exp_name = f"seed_{seed}_Lipz_{Lipz}_lamda_{lamda}" #&timestamp_{timestamp}"
     log_dirs = os.path.join("log", task_name, algo_name, exp_name)
-    os.makedirs(log_dirs)
+    if not os.path.exists(log_dirs):
+        os.makedirs(log_dirs)
     return log_dirs
 
 
