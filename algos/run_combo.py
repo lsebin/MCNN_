@@ -39,7 +39,7 @@ walker2d-medium-expert-v2: rollout-length=1, cql-weight=5.0
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo-name", type=str, default="combo_memdynamic")
+    parser.add_argument("--algo-name", type=str, default="combo_memdynamic_normalizetest_v2")
     parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--actor-lr", type=float, default=1e-4)
@@ -256,14 +256,11 @@ def train(args=get_args()):
         lr_scheduler=lr_scheduler
     )
 
-    if load_dynamics_model:# 
+    if load_dynamics_model:
         args.load_dynamics_path = logger.model_dir
         print(f"loading dynamics model from {args.load_dynamics_path}")
         dynamics.load(args.load_dynamics_path)
     else:
-    # train
-    #if not load_dynamics_model:
-        #dynamics.train(real_buffer.sample_all(), logger=logger, max_epochs_since_update=5)
         print("Dynamics model does not exist, training")
         dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=0)
     

@@ -54,9 +54,6 @@ class MBPolicyTrainer:
         last_10_performance = deque(maxlen=10)
         # train loop
         for e in range(1, self._epoch + 1):
-            
-            if e > 4:
-                exit()
 
             self.policy.train()
 

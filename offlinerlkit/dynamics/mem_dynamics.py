@@ -96,25 +96,22 @@ class MemDynamics(object):
             inputs = torch.from_numpy(inputs).float().to(self.device)
             mem_inputs, mem_targets = self.find_memories(inputs)
             
-            #print(mem_targets)
             inputs = self.scaler.transform_tensor(inputs)
             mem_inputs = self.scaler.transform_tensor(mem_inputs)
             dist = torch.norm(inputs - mem_inputs, dim=1).unsqueeze(1)
+            #print(inputs)
             
-            #preds = self.model.forward(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
-            
-            device = mem_targets.device
-            memtarget_data= mem_targets.cpu().numpy()
-            memtarget_data = memtarget_data/ np.max(abs(memtarget_data))
-            mem_targets = torch.tensor(memtarget_data, device=device)
-            
-            #print(mem_targets)
-            #exit()
-            
+            # device = mem_targets.device
+            # memtarget_data= mem_targets.cpu().numpy()
+            # memtarget_mu = np.mean(memtarget_data, axis=0, keepdims=True)
+            # memtarget_std = np.std(memtarget_data, axis=0, keepdims=True)
+            # memtarget_data1 = (memtarget_data-memtarget_mu)/memtarget_std
+            # memtarget_data2 = memtarget_data/ np.max(abs(memtarget_data))
+            #mem_targets = torch.tensor(memtarget_data1, device=device)
+
             preds = self.model.forward(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
+            
             # unnormalize predicted next states
-            #print(preds)
-            #print("step")
             preds[..., :-1] = preds[..., :-1] * self.obss_abs_max_tensor
 
             next_obss = preds[:, :-1].cpu().numpy() + obss
@@ -167,18 +164,10 @@ class MemDynamics(object):
         """
 
         print(f'obss: {obss.shape}, actions: {actions.shape}, next_obss: {next_obss.shape}, rewards: {rewards.shape}, mem_obss: {mem_obss.shape}, mem_actions: {mem_actions.shape}, mem_next_obss: {mem_next_obss.shape}, mem_rewards: {mem_rewards.shape}')
-        #print(f'test_obss: {test_obss.shape}, test_actions: {test_actions.shape}, test_next_obss: {test_next_obss.shape}, test_rewards: {test_rewards.shape}, test_mem_obss: {test_mem_obss.shape}, test_mem_actions: {test_mem_actions.shape}, test_mem_next_obss: {test_mem_next_obss.shape}, test_mem_rewards: {test_mem_rewards.shape}')
 
         delta_obss = (next_obss - obss) / self.obss_abs_max
         delta_mem_obss = (mem_next_obss - mem_obss) / self.obss_abs_max
-        #print(mem_next_obss)
-        #print(mem_obss)
         
-        #print(np.max(obss), np.max(mem_obss))
-        #print(np.max(delta_mem_obss), np.max(mem_obss), np.max(mem_actions), np.max(mem_next_obss), np.max(mem_rewards))
-        
-        #rewards = self.scaler.transform(rewards)
-        #mem_rewards = self.scaler.transform(mem_rewards)
         #print(np.max(abs(rewards)), np.min(abs(rewards)))
         rewards = rewards / np.max(abs(rewards))
         mem_rewards = mem_rewards / np.max(abs(mem_rewards))
@@ -188,17 +177,6 @@ class MemDynamics(object):
         targets = np.concatenate((delta_obss, rewards), axis=-1)
         mem_targets = np.concatenate((delta_mem_obss, mem_rewards), axis=-1)
         
-        """
-        delta_test_obss = (test_next_obss - test_obss)
-        delta_test_mem_obss = (test_mem_next_obss - test_mem_obss) / self.obss_abs_max 
-
-        test_inputs = np.concatenate((test_obss, test_actions), axis=-1)
-        test_mem_inputs = np.concatenate((test_mem_obss, test_mem_actions), axis=-1)
-        test_targets = np.concatenate((delta_test_obss, test_rewards), axis=-1)
-        test_mem_targets = np.concatenate((delta_test_mem_obss, test_mem_rewards), axis=-1)
-        """
-        
-        #return inputs, targets, mem_inputs, mem_targets, test_inputs, test_targets, test_mem_inputs, test_mem_targets
         return inputs, targets, mem_inputs, mem_targets
 
     def train(
@@ -213,22 +191,31 @@ class MemDynamics(object):
         use_tqdm: bool = False,
     ) -> None:
         self.use_tqdm = use_tqdm
-        #train_inputs, train_targets, train_mem_inputs, train_mem_targets, holdout_inputs, holdout_targets, holdout_mem_inputs, holdout_mem_targets = self.format_samples_for_training(data, full_dataset)
         train_inputs, train_targets, train_mem_inputs, train_mem_targets = self.format_samples_for_training(data, full_dataset)
         
-        
+        # normalize the train_inputs
         self.scaler.fit(train_inputs)
         train_inputs = self.scaler.transform(train_inputs)
-        #holdout_inputs = self.scaler.transform(holdout_inputs)
         train_mem_inputs = self.scaler.transform(train_mem_inputs)
+        #print(train_inputs)
+        #print(train_targets)
         
-        #holdout_mem_inputs = self.scaler.transform(holdout_mem_inputs)
-        #print(torch.max(torch.from_numpy(train_mem_inputs)), torch.max(torch.from_numpy(train_inputs)), np.max(train_targets), np.max(train_mem_targets))
-
+        """
+        target_scaler = StandardScaler()
+        target_scaler.fit(train_targets)
+        train_targets = target_scaler.transform(train_targets)
+        train_mem_targets = target_scaler.transform(train_mem_targets)
+        """
+        #print(train_targets)
+        
+        
         trainset = MemDataset(train_inputs, train_targets, train_mem_inputs, train_mem_targets)
+        # target normalized inside the dataloader?
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
-        #holdoutset = MemDataset(holdout_inputs, holdout_targets, holdout_mem_inputs, holdout_mem_targets)
-        #holdoutloader = torch.utils.data.DataLoader(holdoutset, batch_size=batch_size, shuffle=True, num_workers=4)
+        
+        # for batch_idx, batch in enumerate(trainloader):
+        #     print(batch)
+        #     break
         
         epoch = 0
         holdout_loss = 1e10
@@ -281,6 +268,11 @@ class MemDynamics(object):
     def train_model_step(self, batch):    
         new_batch = [item.to(self.device) for item in batch]
         inputs, targets, mem_inputs, mem_targets = new_batch
+        
+        # print(inputs)
+        # print(targets)
+        #exit()
+        
 
         with torch.no_grad():
             dist = self.compute_distances(inputs, mem_inputs)

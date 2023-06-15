@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from offlinerlkit.nets import MLP
 from typing import Dict, List, Union, Tuple, Optional
+from offlinerlkit.utils.scaler import StandardScaler
 
 def crazy_relu(x, beta):
     return nn.LeakyReLU(beta)(x) - (1-beta) * nn.ReLU()(x-1)
@@ -32,22 +33,45 @@ class MemDynamicsModel(MLP):
 
     def shifted_crazy_relu(self, x, beta):
         return 2 * crazy_relu(0.5*(x+1), beta) - 1
-
+    
     def forward(self, inputs, mem_targets, dist, beta):
         lamda_in_exp = self.lamda * 10 # self.lamda * self.Lipz * 10
         exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
         outputs = self.model(inputs)
-        #print(outputs)
-        #print(mem_targets)
-        #print(exp_lamda_dist)
+        print(mem_targets)
+        print(exp_lamda_dist)
         preds = mem_targets * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * self.memory_act(
                                                                     outputs,
                                                                     beta,
                                                                 )
-        #print(self.memory_act(outputs,beta,))
+        print(self.memory_act(outputs,beta,))
+        print(preds) 
         
         #print(torch.max(outputs),torch.min(outputs), torch.max(self.memory_act(outputs, beta)),  torch.min(self.memory_act(outputs, beta)))
         
         return preds
 
+    
+    
+        """
+ 
+        def forward(self, inputs, mem_targets, dist, beta):
+        lamda_in_exp = self.lamda * 10 # self.lamda * self.Lipz * 10
+        exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
+        outputs = self.model(inputs)
+        #print(mem_targets)
+        #print(exp_lamda_dist)
+        sc = StandardScaler()
+        sc.fit(mem_targets.cpu().numpy())
+        mem_act = self.memory_act( outputs, beta, )
+        preds = mem_targets * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * torch.tensor(sc.transform(mem_act.cpu().numpy()), device=mem_targets.device)
+        #print(torch.tensor(sc.transform(mem_act.cpu().numpy()), device=mem_targets.device))
+        #print(preds)
+        #exit()
+ 
+        
+        #print(torch.max(outputs),torch.min(outputs), torch.max(self.memory_act(outputs, beta)),  torch.min(self.memory_act(outputs, beta)))
+        
+        return preds
+        """
 

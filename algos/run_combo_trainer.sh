@@ -29,12 +29,12 @@ rr=0.5
 Lipz=1.0
 lamda=1.0
 
-for lamda in 0.05
+for lamda in 0.1
 do
     for Lipz in 1.0
     do
         GPU=1
-        CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}.log &
+        CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_policy_norm.log &
     done
 done
 
