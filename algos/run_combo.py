@@ -39,7 +39,7 @@ walker2d-medium-expert-v2: rollout-length=1, cql-weight=5.0
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo-name", type=str, default="combo_memdynamic_normalizetest_v2")
+    parser.add_argument("--algo-name", type=str, default="combo_memdynamic_normalized")
     parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--actor-lr", type=float, default=1e-4)

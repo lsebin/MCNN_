@@ -58,9 +58,24 @@ class MemDynamics(object):
         self.nodes_rewards = torch.from_numpy(dataset["memories_rewards"]).float().to(self.device).unsqueeze(1)
         self.nodes_inputs = torch.cat([self.nodes_obs, self.nodes_actions], dim=1)
         self.nodes_next_inputs = torch.cat([self.nodes_obs], dim=1)
-
-        self.obss_abs_max = np.max(np.abs(dataset["observations"]), axis=0, keepdims=True)
-        self.obss_abs_max_tensor = torch.as_tensor(self.obss_abs_max).to(self.model.device)
+        
+        
+        # new for normalization
+        self.obss_mean = np.mean(dataset["observations"], axis=0, keepdims=True)
+        self.obss_std = np.std(dataset["observations"], axis=0, keepdims=True)
+        self.obss_mean_tensor = torch.from_numpy(self.obss_mean).to(self.device)
+        self.obss_std_tensor = torch.from_numpy(self.obss_std).to(self.device)
+        
+        self.actions_mean = np.mean(dataset["actions"], axis=0, keepdims=True)
+        self.actions_std = np.std(dataset["actions"], axis=0, keepdims=True)
+        self.actions_mean_tensor = torch.from_numpy(self.actions_mean).to(self.device)
+        self.actions_std_tensor = torch.from_numpy(self.actions_std)
+        
+        self.abs_max_delta_obss = np.max(np.abs(dataset["next_observations"]-dataset["observations"]), axis=0, keepdims=True)
+        self.abs_max_delta_obss_tensor = torch.from_numpy(self.abs_max_delta_obss).to(self.device)
+        
+        self.abs_max_rewards = np.max(np.abs(dataset["rewards"]), axis=0, keepdims=True)
+        self.abs_max_rewards_tensor = torch.from_numpy(self.abs_max_rewards).to(self.device)
 
         self.diagnostics = {}
 
@@ -71,9 +86,12 @@ class MemDynamics(object):
         mem_next_obss = self.nodes_next_obs[closest_nodes, :]
         mem_rewards = self.nodes_rewards[closest_nodes, :]
 
-        delta_mem_obss = (mem_next_obss - mem_obss) / self.obss_abs_max_tensor
-        mem_rewards = mem_rewards / torch.max(abs(mem_rewards))
-        #mem_rewards = torch.from_numpy(mem_rewards)
+        delta_mem_obss = (mem_next_obss - mem_obss) / self.abs_max_delta_obss_tensor
+
+        mem_obss = (mem_obss - self.obss_mean_tensor) / self.obss_std_tensor
+        mem_next_obss = (mem_next_obss - self.obss_mean_tensor) / self.obss_std_tensor
+        # mem_actions = (mem_actions - self.actions_mean_tensor) / self.actions_std_tensor
+        mem_rewards = mem_rewards / self.abs_max_rewards_tensor
 
         mem_inputs = torch.cat([mem_obss, mem_actions], dim=1)
         mem_targets = torch.cat([delta_mem_obss, mem_rewards], dim=1)
@@ -96,53 +114,47 @@ class MemDynamics(object):
             inputs = torch.from_numpy(inputs).float().to(self.device)
             mem_inputs, mem_targets = self.find_memories(inputs)
             
-            inputs = self.scaler.transform_tensor(inputs)
-            mem_inputs = self.scaler.transform_tensor(mem_inputs)
-            dist = torch.norm(inputs - mem_inputs, dim=1).unsqueeze(1)
-            #print(inputs)
+            obss = (obss - self.obss_mean) / self.obss_std
+            actions = (actions - self.actions_mean) / self.actions_std
+            inputs = np.concatenate([obss, actions], axis=-1)
+            inputs = torch.from_numpy(inputs).float().to(self.device)
             
-            # device = mem_targets.device
-            # memtarget_data= mem_targets.cpu().numpy()
-            # memtarget_mu = np.mean(memtarget_data, axis=0, keepdims=True)
-            # memtarget_std = np.std(memtarget_data, axis=0, keepdims=True)
-            # memtarget_data1 = (memtarget_data-memtarget_mu)/memtarget_std
-            # memtarget_data2 = memtarget_data/ np.max(abs(memtarget_data))
-            #mem_targets = torch.tensor(memtarget_data1, device=device)
+            dist = torch.norm(inputs - mem_inputs, dim=1).unsqueeze(1)
 
-            preds = self.model.forward(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
+            preds = self.model(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0)
             
             # unnormalize predicted next states
-            preds[..., :-1] = preds[..., :-1] * self.obss_abs_max_tensor
+            preds[..., :-1] = preds[..., :-1] * self.abs_max_delta_obss_tensor
+            
+            # to nd array
+            preds = preds.cpu().numpy()
 
-            next_obss = preds[:, :-1].cpu().numpy() + obss
-            rewards = preds[:, -1:].cpu().numpy()
+            # undeltafy predicted next states
+            next_obss = preds[:, :-1] + obss
+
+            # unnormalize predicted rewards
+            rewards = preds[:, -1:] * self.abs_max_rewards
+
             terminals = self.terminal_fn(obss, actions, next_obss)
             info = {}
             info["raw_reward"] = rewards
             # dist = dist.cpu().numpy()
 
             if self.penalty_coef:
-            #if 1:
-                #penalty = -1.0 / dist # CHANGE PENALTY HERE but have to pass true next_obss to this function!
                 mem_next_model = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
-                # print(f'{rewards.min()=} {rewards.max()=}')
-                # print(f'before clip penalty.min()={penalty.min().item()} penalty.max()={penalty.max()=}')
                 delta_mem_obss_model = np.power(next_obss-mem_next_model, 2)
                 penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
-                #penalty = np.clip(penalty.cpu().numpy(), -10, 0)
-                #penalty = -1 * np.log(penalty).reshape(10000, 1)
                 penalty = -1 * penalty.reshape(10000, 1)
 
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
 
                 assert penalty.shape == rewards.shape
-                #print(rewards)
                 rewards = rewards + self.penalty_coef * penalty
                 info["penalty"] = penalty
 
             return next_obss, rewards, terminals, info
     
-    def format_samples_for_training(self, data: Dict, full_dataset: Dict) -> Tuple[np.ndarray, np.ndarray]:
+    def format_dataset_for_training(self, data: Dict, full_dataset: Dict) -> Tuple[np.ndarray, np.ndarray]:
         obss = data["observations"]
         actions = data["actions"]
         next_obss = data["next_observations"]
@@ -151,26 +163,43 @@ class MemDynamics(object):
         mem_actions = data["mem_actions"]
         mem_next_obss = data["mem_next_observations"]
         mem_rewards = data["mem_rewards"]
-        
-        """
-        test_obss = full_dataset["test_observations"]
-        test_actions = full_dataset["test_actions"]
-        test_next_obss = full_dataset["test_next_observations"]
-        test_rewards = full_dataset["test_rewards"].reshape(-1, 1)
-        test_mem_obss = full_dataset["test_mem_observations"]
-        test_mem_actions = full_dataset["test_mem_actions"]
-        test_mem_next_obss = full_dataset["test_mem_next_observations"]
-        test_mem_rewards = full_dataset["test_mem_rewards"].reshape(-1, 1)
-        """
 
         print(f'obss: {obss.shape}, actions: {actions.shape}, next_obss: {next_obss.shape}, rewards: {rewards.shape}, mem_obss: {mem_obss.shape}, mem_actions: {mem_actions.shape}, mem_next_obss: {mem_next_obss.shape}, mem_rewards: {mem_rewards.shape}')
-
-        delta_obss = (next_obss - obss) / self.obss_abs_max
-        delta_mem_obss = (mem_next_obss - mem_obss) / self.obss_abs_max
         
-        #print(np.max(abs(rewards)), np.min(abs(rewards)))
-        rewards = rewards / np.max(abs(rewards))
-        mem_rewards = mem_rewards / np.max(abs(mem_rewards))
+        """
+        self.obss_mean = np.mean(data["observations"], axis=0, keepdims=True)
+        self.obss_std = np.std(data["observations"], axis=0, keepdims=True)
+        self.obss_mean_tensor = torch.from_numpy(self.obss_mean).to(self.device)
+        self.obss_std_tensor = torch.from_numpy(self.obss_std).to(self.device)
+        
+        self.actions_mean = np.mean(data["actions"], axis=0, keepdims=True)
+        self.actions_std = np.std(data["actions"], axis=0, keepdims=True)
+        self.actions_mean_tensor = torch.from_numpy(self.actions_mean).to(self.device)
+        self.actions_std_tensor = torch.from_numpy(self.actions_std)
+        """
+        
+        
+        self.rewards_mean = np.mean(data["rewards"], axis=0, keepdims=True)
+        self.rewards_std = np.std(data["rewards"], axis=0, keepdims=True)
+
+        delta_obss = (next_obss - obss) 
+        # self.abs_max_delta_obss = np.max(np.abs(delta_obss), axis=0, keepdims=True)
+        # self.abs_max_delta_obss_tensor = torch.from_numpy(self.abs_max_delta_obss).to(self.device)
+        delta_obss = delta_obss / self.abs_max_delta_obss
+        delta_mem_obss = (mem_next_obss - mem_obss) / self.abs_max_delta_obss
+
+        obss = (obss - self.obss_mean) / self.obss_std
+        next_obss = (next_obss - self.obss_mean) / self.obss_std
+        # actions = (actions - self.actions_mean) / self.actions_std
+
+        mem_obss = (mem_obss - self.obss_mean) / self.obss_std
+        mem_next_obss = (mem_next_obss - self.obss_mean) / self.obss_std
+        # mem_actions = (mem_actions - self.actions_mean) / self.actions_std
+        
+        # self.abs_max_rewards = np.max(np.abs(rewards), axis=0, keepdims=True)
+        # self.abs_max_rewards_tensor = torch.from_numpy(self.abs_max_rewards).to(self.device)
+        rewards = rewards / self.abs_max_rewards
+        mem_rewards = mem_rewards / self.abs_max_rewards
         
         inputs = np.concatenate((obss, actions), axis=-1)
         mem_inputs = np.concatenate((mem_obss, mem_actions), axis=-1)
@@ -185,32 +214,14 @@ class MemDynamics(object):
         full_dataset: Dict,
         logger: Logger,
         max_epochs: Optional[float] = None,
-        # max_epochs_since_update: int = 5,
         batch_size: int = 256,
         holdout_ratio: float = 0.2,
         use_tqdm: bool = False,
     ) -> None:
         self.use_tqdm = use_tqdm
-        train_inputs, train_targets, train_mem_inputs, train_mem_targets = self.format_samples_for_training(data, full_dataset)
-        
-        # normalize the train_inputs
-        self.scaler.fit(train_inputs)
-        train_inputs = self.scaler.transform(train_inputs)
-        train_mem_inputs = self.scaler.transform(train_mem_inputs)
-        #print(train_inputs)
-        #print(train_targets)
-        
-        """
-        target_scaler = StandardScaler()
-        target_scaler.fit(train_targets)
-        train_targets = target_scaler.transform(train_targets)
-        train_mem_targets = target_scaler.transform(train_mem_targets)
-        """
-        #print(train_targets)
-        
-        
+        train_inputs, train_targets, train_mem_inputs, train_mem_targets = self.format_dataset_for_training(data, full_dataset)
+                
         trainset = MemDataset(train_inputs, train_targets, train_mem_inputs, train_mem_targets)
-        # target normalized inside the dataloader?
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
         
         # for batch_idx, batch in enumerate(trainloader):
@@ -223,15 +234,10 @@ class MemDynamics(object):
         while True:
             epoch += 1
             train_loss = self.train_model_epoch(epoch, trainloader)
-            #new_holdout_loss = self.test_model(holdoutloader)
-            
-            #if new_holdout_loss <= holdout_loss:
-            #    holdout_loss = new_holdout_loss
                 
             self.save(epoch, logger.model_dir)
             
             logger.logkv("loss/dynamics_train_loss", train_loss)
-            #logger.logkv("loss/dynamics_holdout_loss", holdout_loss)
             logger.set_timestep(epoch)
             logger.logkv("beta", self.beta)
             logger.dumpkvs(exclude=["policy_training_progress"])
@@ -349,6 +355,6 @@ class MemDynamics(object):
 
     def load(self, load_path: str) -> None:
         self.model.load_state_dict(torch.load(os.path.join(load_path, "dynamics.pth"), map_location=self.model.device))
-        self.scaler.load_scaler(load_path)
+        #self.scaler.load_scaler(load_path)
 
         
