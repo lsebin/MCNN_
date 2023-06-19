@@ -80,6 +80,11 @@ class MemDynamics(object):
         self.abs_max_rewards_diff = np.max(np.abs(dataset["rewards"]-self.rewards_mean), axis=0, keepdims=True)
         self.abs_max_rewards_diff_tensor = torch.from_numpy(self.abs_max_rewards_diff).float().to(self.device)
         
+        self.rewards_std = np.std(dataset["rewards"], axis=0, keepdims=True)
+        self.rewards_std_tensor = torch.from_numpy(self.rewards_std).float().to(self.device)
+        self.abs_max_rewards = np.max(np.abs(dataset["rewards"]), axis=0, keepdims=True)
+        self.abs_max_rewards_tensor = torch.from_numpy(self.abs_max_rewards).float().to(self.device)
+        
         self.diagnostics = {}
 
     def find_memories(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -117,7 +122,6 @@ class MemDynamics(object):
             inputs = np.concatenate([obss, actions], axis=-1)
             inputs = torch.from_numpy(inputs).float().to(self.device)
             mem_inputs, mem_targets = self.find_memories(inputs)
-            #print(inputs)
             
             obss_normalized = (obss - self.obss_mean) / self.obss_std
             actions_normalized = (actions - self.actions_mean) / self.actions_std
@@ -125,30 +129,23 @@ class MemDynamics(object):
             inputs = torch.from_numpy(inputs).float().to(self.device)
             
             dist = torch.norm(inputs - mem_inputs, dim=1).unsqueeze(1)
-            
-            #print(inputs)
-            #print(mem_inputs)
+    
 
             preds = self.model(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0).cpu().numpy()
-            
+
             # unnormalize predicted next states
             preds[..., :-1] = preds[..., :-1] * self.abs_max_delta_obss
-            #print(preds[..., :-1])
 
             # undeltafy predicted next states
             next_obss = preds[:, :-1] + obss
-            #print(next_obss)
 
             # unnormalize predicted rewards
-            #rewards = preds[:, -1:] * self.abs_max_rewards
             rewards = preds[:, -1:] * self.abs_max_rewards_diff
             rewards = rewards + self.rewards_mean
-            #print(np.mean(rewards))
 
             terminals = self.terminal_fn(obss, actions, next_obss)
             info = {}
             info["raw_reward"] = rewards
-            # dist = dist.cpu().numpy()
 
             #if self.penalty_coef:
             if 0 > 1:
@@ -189,12 +186,9 @@ class MemDynamics(object):
         self.actions_std_tensor = torch.from_numpy(self.actions_std)
         """
         
-        #self.rewards_mean = np.mean(data["rewards"], axis=0, keepdims=True)
         self.rewards_std = np.std(data["rewards"], axis=0, keepdims=True)
 
         delta_obss = (next_obss - obss) 
-        # self.abs_max_delta_obss = np.max(np.abs(delta_obss), axis=0, keepdims=True)
-        # self.abs_max_delta_obss_tensor = torch.from_numpy(self.abs_max_delta_obss).to(self.device)
         delta_obss = delta_obss / self.abs_max_delta_obss
         delta_mem_obss = (mem_next_obss - mem_obss) / self.abs_max_delta_obss
 
@@ -206,14 +200,8 @@ class MemDynamics(object):
         mem_next_obss = (mem_next_obss - self.obss_mean) / self.obss_std
         # mem_actions = (mem_actions - self.actions_mean) / self.actions_std
         
-        # self.abs_max_rewards = np.max(np.abs(rewards), axis=0, keepdims=True)
-        # self.abs_max_rewards_tensor = torch.from_numpy(self.abs_max_rewards).to(self.device)
-        # self.abs_max_rewards_diff = np.max(np.abs(rewards-self.rewards_mean), axis=0, keepdims=True)
         rewards = (rewards - self.rewards_mean) / self.abs_max_rewards_diff
         mem_rewards = (mem_rewards - self.rewards_mean) / self.abs_max_rewards_diff
-        
-        #print(np.max(rewards, axis=0))
-        #print(np.min(rewards, axis=0))
         
         inputs = np.concatenate((obss, actions), axis=-1)
         mem_inputs = np.concatenate((mem_obss, mem_actions), axis=-1)

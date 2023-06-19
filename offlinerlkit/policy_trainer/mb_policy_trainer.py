@@ -89,6 +89,7 @@ class MBPolicyTrainer:
                 
                 # update the dynamics if necessary
                 if 0 < self._dynamics_update_freq and (num_timesteps+1)%self._dynamics_update_freq == 0:
+                    print("update dynamics")
                     dynamics_update_info = self.policy.update_dynamics(self.real_buffer)
                     for k, v in dynamics_update_info.items():
                         self.logger.logkv_mean(k, v)
@@ -116,8 +117,8 @@ class MBPolicyTrainer:
             #torch.save(self.policy.state_dict(), os.path.join(self.logger.checkpoint_dir, "policy.pth"))
 
         self.logger.log("total time: {:.2f}s".format(time.time() - start_time))
-        #torch.save(self.policy.state_dict(), os.path.join(self.logger.model_dir, "policy.pth"))
-        #self.policy.dynamics.save(self.logger.model_dir)
+        torch.save(self.policy.state_dict(), os.path.join(self.logger.model_dir, "policy.pth"))
+        self.policy.dynamics.save(self.logger.model_dir)
         self.logger.close()
     
         return {"last_10_performance": np.mean(last_10_performance)}

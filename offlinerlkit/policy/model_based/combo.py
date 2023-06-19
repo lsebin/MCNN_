@@ -94,9 +94,6 @@ class COMBOPolicy(CQLPolicy):
 
             num_transitions += len(observations)
             rewards_arr = np.append(rewards_arr, rewards.flatten())
-            # print(len(rewards))
-            # print(len(rewards_arr))
-            # print(rewards_arr.mean())
 
             nonterm_mask = (~terminals).flatten()
             if nonterm_mask.sum() == 0:

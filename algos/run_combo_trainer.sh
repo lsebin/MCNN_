@@ -24,19 +24,19 @@ mkdir algos/logs/${task}/${AlgoType}
 
 F=0.1
 
-rollout=5
+rollout=30
 rr=0.5
 Lipz=1.0
 lamda=1.0
 
-for lamda in 0.01 0.05
-do
-    for Lipz in 1.0
-    do
-        GPU=0
-        CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm.log &
-    done
-done
+# for lamda in 0.1
+# do
+#      for Lipz in 1.0
+#      do
+#          GPU=0
+#          CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm.log &
+#      done
+# done
 
 # Lipz=1.0
 # lamda=1.0
@@ -50,14 +50,14 @@ done
 #     done
 # done
 
-# for rollout in 1 3 5 7 9
-# do
-#     for rr in 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75
-#     do
-#         GPU=0
-#         CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/combo_trainer.py  --real-ratio ${rr} --rollout-length ${rollout} --use-tqdm 0 > algos/logs/mem_${AlgoType}_${task}_frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}.log &
-#     done
-# done
+  for rollout in 5
+  do
+       for rr in 0.025 0.075 0.01
+       do
+           GPU=1
+           CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm.log &
+       done
+   done
 
 
 # F=0.1
