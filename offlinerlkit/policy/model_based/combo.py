@@ -72,6 +72,7 @@ class COMBOPolicy(CQLPolicy):
 
         num_transitions = 0
         rewards_arr = np.array([])
+        penalty_arr = np.arry([])
         rollout_transitions = defaultdict(list)
 
         # rollout
@@ -91,9 +92,13 @@ class COMBOPolicy(CQLPolicy):
             rollout_transitions["actions"].append(actions)
             rollout_transitions["rewards"].append(rewards)
             rollout_transitions["terminals"].append(terminals)
-
+            
+            #penalty = info["penalty"]
+            rollout_transitions["penalty"].append(terminals)
+            
             num_transitions += len(observations)
             rewards_arr = np.append(rewards_arr, rewards.flatten())
+            penalty_arr = np.append(penalty_arr, rewards.flatten())
 
             nonterm_mask = (~terminals).flatten()
             if nonterm_mask.sum() == 0:
@@ -105,7 +110,7 @@ class COMBOPolicy(CQLPolicy):
             rollout_transitions[k] = np.concatenate(v, axis=0)
 
         return rollout_transitions, \
-            {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean()}
+            {"num_transitions": num_transitions, "reward_mean": rewards_arr.mean(), "penalty_mean": penalty_arr.mean()}
     
     def learn(self, batch: Dict) -> Dict[str, float]:
         real_batch, fake_batch = batch["real"], batch["fake"]

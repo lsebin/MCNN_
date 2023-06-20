@@ -67,8 +67,10 @@ class MBPolicyTrainer:
                     self.fake_buffer.add_batch(**rollout_transitions)
                     # self.logger.log(
                     #     "num rollout transitions: {}, reward mean: {:.4f} raw reward mean: {:.4f} penalty mean: {:.4f} ".\
-                    #         format(rollout_info["num_transitions"], rollout_info["reward_mean"],  rollout_info["raw_reward_mean"],  rollout_info["penalty_mean"])
+                    #         format(rollout_info["num_transitions"], rollout_info["reward_mean"], rollout_info["penalty_mean"])
                     # )
+                    
+                    # rollout_info["raw_reward_mean"]
                     self.logger.log(
                         "num rollout transitions: {}, reward mean: {:.4f}" .\
                             format(rollout_info["num_transitions"], rollout_info["reward_mean"])

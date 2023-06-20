@@ -93,9 +93,9 @@ class MemDynamics(object):
         mem_actions = self.nodes_actions[closest_nodes, :]
         mem_next_obss = self.nodes_next_obs[closest_nodes, :]
         mem_rewards = self.nodes_rewards[closest_nodes, :]
-
+        
         delta_mem_obss = (mem_next_obss - mem_obss) / self.abs_max_delta_obss_tensor
-
+        
         mem_obss = (mem_obss - self.obss_mean_tensor) / self.obss_std_tensor
         mem_next_obss = (mem_next_obss - self.obss_mean_tensor) / self.obss_std_tensor
         # mem_actions = (mem_actions - self.actions_mean_tensor) / self.actions_std_tensor
@@ -108,7 +108,7 @@ class MemDynamics(object):
     def find_memories_penalty (self, inputs: torch.Tensor) -> np.ndarray:
         _, closest_nodes = torch.cdist(inputs, self.nodes_next_inputs).min(dim=1)	   
         mem_obss = self.nodes_obs[closest_nodes, :]	 
-        mem_obss = (mem_obss - self.obss_mean_tensor) / self.obss_std_tensor       
+        #mem_obss = (mem_obss - self.obss_mean_tensor) / self.obss_std_tensor       
         return mem_obss.cpu().numpy()	      
 
     def step(
@@ -124,13 +124,14 @@ class MemDynamics(object):
             mem_inputs, mem_targets = self.find_memories(inputs)
             
             obss_normalized = (obss - self.obss_mean) / self.obss_std
-            actions_normalized = (actions - self.actions_mean) / self.actions_std
-            inputs = np.concatenate([obss_normalized, actions_normalized], axis=-1)
+            #actions_normalized = (actions - self.actions_mean) / self.actions_std
+            #inputs = np.concatenate([obss_normalized, actions_normalized], axis=-1)
+            inputs = np.concatenate([obss_normalized, actions], axis=-1)
             inputs = torch.from_numpy(inputs).float().to(self.device)
             
-            dist = torch.norm(inputs - mem_inputs, dim=1).unsqueeze(1)
+            #dist = torch.norm(inputs - mem_inputs, pnorm=2, dim=1).unsqueeze(1)
+            dist = self.compute_distances(inputs, mem_inputs)
     
-
             preds = self.model(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0).cpu().numpy()
 
             # unnormalize predicted next states
@@ -149,9 +150,9 @@ class MemDynamics(object):
 
             #if self.penalty_coef:
             if 0 > 1:
-                mem_next_model = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
-                delta_mem_obss_model = np.power(next_obss-mem_next_model, 2)
-                penalty = np.sqrt(np.einsum('ij -> i', delta_mem_obss_model))
+                mem_next_obss = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
+                delta_mem_next_obss = np.power(next_obss-mem_next_obss, 2)
+                penalty = np.sqrt(np.einsum('ij -> i', delta_mem_next_obss))
                 penalty = -1 * penalty.reshape(10000, 1)
 
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
@@ -204,8 +205,8 @@ class MemDynamics(object):
         mem_rewards = (mem_rewards - self.rewards_mean) / self.abs_max_rewards_diff
         
         inputs = np.concatenate((obss, actions), axis=-1)
-        mem_inputs = np.concatenate((mem_obss, mem_actions), axis=-1)
         targets = np.concatenate((delta_obss, rewards), axis=-1)
+        mem_inputs = np.concatenate((mem_obss, mem_actions), axis=-1)
         mem_targets = np.concatenate((delta_mem_obss, mem_rewards), axis=-1)
         
         return inputs, targets, mem_inputs, mem_targets
@@ -226,7 +227,6 @@ class MemDynamics(object):
         trainset = MemDataset(train_inputs, train_targets, train_mem_inputs, train_mem_targets)
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=4)
 
-        
         epoch = 0
         holdout_loss = 1e10
         logger.log("Training dynamics:")
@@ -321,13 +321,10 @@ class MemDynamics(object):
             dist=dist,
             beta=self.beta, 
         )
-
-        # unnormalize predicted next states
-        preds[..., :-1] = preds[..., :-1] * self.obss_abs_max_tensor
-
-
+        
         loss = F.mse_loss(preds, targets) 
-
+        
+        # unnormalize predicted next states1``
         return loss.detach().cpu().item()
     
     def compute_distances(self, inputs, mem_inputs, dim=1, pnorm=2):

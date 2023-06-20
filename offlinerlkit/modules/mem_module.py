@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 from offlinerlkit.nets import MLP
 from typing import Dict, List, Union, Tuple, Optional
-from offlinerlkit.utils.scaler import StandardScaler
 
 def crazy_relu(x, beta):
     return nn.LeakyReLU(beta)(x) - (1-beta) * nn.ReLU()(x-1)
@@ -39,18 +38,13 @@ class MemDynamicsModel(MLP):
         exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
         outputs = self.model(inputs)
         #print(mem_targets)
-        #print(torch.max(dist), torch.min(dist))
         #print(exp_lamda_dist)
-        #print(outputs)
         preds = mem_targets * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * self.memory_act(
                                                                     outputs,
                                                                     beta,
                                                                 )
         #print(self.memory_act(outputs,beta,))
         #print(preds)
-        #exit()
-        
-        
         
         #print(torch.max(outputs),torch.min(outputs), torch.max(self.memory_act(outputs, beta)),  torch.min(self.memory_act(outputs, beta)))
         

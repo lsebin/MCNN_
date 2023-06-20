@@ -139,17 +139,6 @@ def train(args=get_args()):
         alpha = args.alpha
 
     # create dynamics
-    
-    """
-    dynamics_model = EnsembleDynamicsModel(
-        obs_dim=np.prod(args.obs_shape),
-        action_dim=args.action_dim,
-        hidden_dims=args.dynamics_hidden_dims,
-        num_ensemble=args.n_ensemble,
-        num_elites=args.n_elites,
-        weight_decays=args.dynamics_weight_decay,
-        device=args.device
-    ) """
     dynamics_model = MemDynamicsModel(
         input_dim=args.obs_dim + args.action_dim,
         hidden_dims=args.dynamics_hidden_dims,
@@ -171,39 +160,6 @@ def train(args=get_args()):
         termination_fn,
         dataset=dataset,
         penalty_coef=args.penalty_coef,
-    )
-    """"
-    dynamics = EnsembleDynamics(
-        dynamics_model,
-        dynamics_optim,
-        scaler,
-        termination_fn
-    )
-    """
-
-    # create policy
-    policy = COMBOPolicy(
-        dynamics,
-        actor,
-        critic1,
-        critic2,
-        actor_optim,
-        critic1_optim,
-        critic2_optim,
-        action_space=env.action_space,
-        tau=args.tau,
-        gamma=args.gamma,
-        alpha=alpha,
-        cql_weight=args.cql_weight,
-        temperature=args.temperature,
-        max_q_backup=args.max_q_backup,
-        deterministic_backup=args.deterministic_backup,
-        with_lagrange=args.with_lagrange,
-        lagrange_threshold=args.lagrange_threshold,
-        cql_alpha_lr=args.cql_alpha_lr,
-        num_repeart_actions=args.num_repeat_actions,
-        uniform_rollout=args.uniform_rollout,
-        rho_s=args.rho_s
     )
 
     # create buffer
@@ -240,6 +196,39 @@ def train(args=get_args()):
     logger = Logger(log_dirs, output_config)
     logger.log_hyperparameters(vars(args))
 
+    if load_dynamics_model:
+        args.load_dynamics_path = logger.model_dir
+        print(f"loading dynamics model from {args.load_dynamics_path}")
+        dynamics.load(args.load_dynamics_path)
+    else:
+        print("Dynamics model does not exist, training")
+        dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=0)
+        
+    # create policy
+    policy = COMBOPolicy(
+        dynamics,
+        actor,
+        critic1,
+        critic2,
+        actor_optim,
+        critic1_optim,
+        critic2_optim,
+        action_space=env.action_space,
+        tau=args.tau,
+        gamma=args.gamma,
+        alpha=alpha,
+        cql_weight=args.cql_weight,
+        temperature=args.temperature,
+        max_q_backup=args.max_q_backup,
+        deterministic_backup=args.deterministic_backup,
+        with_lagrange=args.with_lagrange,
+        lagrange_threshold=args.lagrange_threshold,
+        cql_alpha_lr=args.cql_alpha_lr,
+        num_repeart_actions=args.num_repeat_actions,
+        uniform_rollout=args.uniform_rollout,
+        rho_s=args.rho_s
+    )
+    
     # create policy trainer
     policy_trainer = MBPolicyTrainer(
         policy=policy,
@@ -255,14 +244,6 @@ def train(args=get_args()):
         eval_episodes=args.eval_episodes,
         lr_scheduler=lr_scheduler
     )
-
-    if load_dynamics_model:
-        args.load_dynamics_path = logger.model_dir
-        print(f"loading dynamics model from {args.load_dynamics_path}")
-        dynamics.load(args.load_dynamics_path)
-    else:
-        print("Dynamics model does not exist, training")
-        dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=0)
     
     policy_trainer.train()
 
