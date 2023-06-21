@@ -148,12 +148,12 @@ class MemDynamics(object):
             info = {}
             info["raw_reward"] = rewards
 
-            #if self.penalty_coef:
-            if 0 > 1:
+            if self.penalty_coef:
                 mem_next_obss = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
                 delta_mem_next_obss = np.power(next_obss-mem_next_obss, 2)
                 penalty = np.sqrt(np.einsum('ij -> i', delta_mem_next_obss))
-                penalty = -1 * penalty.reshape(10000, 1)
+                #penalty = self.compute_distances(next_obss, mem_next_obss)
+                penalty = -1 * penalty.reshape(rewards.shape[0], 1)
 
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
 

@@ -81,7 +81,7 @@ def get_args():
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     
-    parser.add_argument("--penalty-coef", type=float, default=0)
+    parser.add_argument("--penalty-coef", type=float, default=0) # start testing with 0.05
     parser.add_argument('--Lipz', type=float, default=1.0)
     parser.add_argument('--lamda', type=float, default=1.0)
     parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
