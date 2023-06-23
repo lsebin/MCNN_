@@ -30,14 +30,14 @@ Lipz=1.0
 lamda=0.1
 penalty=0
 
-# for lamda in 0.1
-# do
-#      for Lipz in 1.0
-#      do
-#          GPU=0
-#          CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm.log &
-#      done
-# done
+for rr in 0.75 0.25
+do
+      for rollout in 3 10
+      do
+          GPU=1
+          CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm_v2.log &
+      done
+done
 
 # Lipz=1.0
 # lamda=1.0
@@ -51,14 +51,14 @@ penalty=0
 #     done
 # done
 
-  for penalty in 0.05 0.1 0.025 0.075
-  do
-       for rr in 0.1
-       do
-           GPU=1
-           CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef_${penalty}_rollout${rollout}_norm_v2.log &
-       done
-   done
+#   for penalty in 0.05 0.1 0.025 0.075
+#   do
+#        for rr in 0.1
+#        do
+#            GPU=1
+#            CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef${penalty}_rollout${rollout}_norm_v2.log &
+#        done
+#    done
 
 
 # F=0.1

@@ -42,7 +42,7 @@ def get_args():
     parser.add_argument("--algo-name", type=str, default="combo_memdynamic_normalized")
     parser.add_argument("--task", type=str, default="halfcheetah-medium-replay-v2")
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--actor-lr", type=float, default=1e-4)
+    parser.add_argument("--actor-lr", type=float, default=1e-4) #1e-4
     parser.add_argument("--critic-lr", type=float, default=3e-4)
     parser.add_argument("--hidden-dims", type=int, nargs='*', default=[256, 256, 256])
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -85,7 +85,7 @@ def get_args():
     parser.add_argument('--Lipz', type=float, default=1.0)
     parser.add_argument('--lamda', type=float, default=1.0)
     parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
-    parser.add_argument('--num_memories_frac', type=float, default=0.1)
+    parser.add_argument('--num_memories_frac', type=float, default=0.1) #use more 
     parser.add_argument("--dynamics-epochs", type=int, default=200)
     parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
 

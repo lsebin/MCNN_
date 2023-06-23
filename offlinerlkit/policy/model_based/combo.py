@@ -98,8 +98,9 @@ class COMBOPolicy(CQLPolicy):
             rewards_arr = np.append(rewards_arr, rewards.flatten())
             
             #added for penalty
-            penalty = info["penalty"]
-            penalty_arr = np.append(penalty_arr, penalty.flatten())
+            if self.dynamics.penalty_coef:
+                penalty = info["penalty"]
+                penalty_arr = np.append(penalty_arr, penalty.flatten())
             
             raw_rewards = info["raw_reward"]
             raw_rewards_arr = np.append(raw_rewards_arr, raw_rewards.flatten())
