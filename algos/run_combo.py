@@ -11,13 +11,13 @@ import torch
 
 
 from offlinerlkit.nets import MLP
-from offlinerlkit.modules import ActorProb, Critic, TanhDiagGaussian, EnsembleDynamicsModel, MemDynamicsModel
-from offlinerlkit.dynamics import EnsembleDynamics, MemDynamics
+from offlinerlkit.modules import ActorProb, Critic, TanhDiagGaussian, MemDynamicsModel
+from offlinerlkit.dynamics import MemDynamics
 from offlinerlkit.utils.scaler import StandardScaler
 from offlinerlkit.utils.termination_fns import get_termination_fn
-from offlinerlkit.utils.load_dataset import qlearning_dataset, qlearning_dataset_memories
+from offlinerlkit.utils.load_dataset import qlearning_dataset_memories
 from offlinerlkit.buffer import ReplayBuffer
-from offlinerlkit.utils.logger import Logger, make_log_dirs, make_log_dirs_origin
+from offlinerlkit.utils.logger import Logger, make_log_dirs_origin
 from offlinerlkit.policy_trainer import MBPolicyTrainer
 from offlinerlkit.policy import COMBOPolicy
 
@@ -181,11 +181,12 @@ def train(args=get_args()):
         device=args.device
     )
     
-    load_dynamics_model = True if os.path.exists(f'log/{args.task}/{args.algo_name}/seed_{args.seed}_Lipz_{args.Lipz}_lamda_{args.lamda}/model') else False
+    load_dynamics_model = True if os.path.exists(f'log/{args.task}/{args.algo_name}/frac{args.num_memories_frac}/seed_{args.seed}_Lipz_{args.Lipz}_lamda_{args.lamda}/model') else False
     print(load_dynamics_model)
 
     # log
-    log_dirs = make_log_dirs_origin(args.task, args.algo_name, args.seed, args.Lipz, args.lamda, vars(args))
+    log_dirs = make_log_dirs_origin(args.task, args.algo_name, args.seed, args.Lipz, args.lamda, vars(args), args.num_memories_frac)
+    print(log_dirs)
     # key: output file name, value: output handler type
     output_config = {
         "consoleout_backup": "stdout",

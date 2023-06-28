@@ -24,20 +24,21 @@ mkdir algos/logs/${task}/${AlgoType}
 
 F=0.1
 
-rollout=5
-rr=0.1
+# rollout=5
+# rr=0.75
 Lipz=1.0
-lamda=0.1
-penalty=0
+# lamda=1.0
+# penalty=0
 
-for rr in 0.75 0.25
-do
-      for rollout in 3 10
-      do
-          GPU=1
-          CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm_v2.log &
-      done
-done
+#  lamda=0.1
+#  for F in 0.4
+#  do
+#      for rollout in 3
+#      do
+#          GPU=
+#          CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm_v2.log &
+#      done
+#  done
 
 # Lipz=1.0
 # lamda=1.0
@@ -51,14 +52,20 @@ done
 #     done
 # done
 
-#   for penalty in 0.05 0.1 0.025 0.075
-#   do
-#        for rr in 0.1
-#        do
-#            GPU=1
-#            CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} > algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef${penalty}_rollout${rollout}_norm_v2.log &
-#        done
-#    done
+lamda=1.0
+rollout=3
+penalty=0.03
+rr=0.75
+
+for F in 0.1 #0.25
+#for penalty in 0.3 0.4 0.5 #0.15 0.125 0.01 0.1 0.025 0.075 0.05
+do
+     for penalty in 0.3 0.4 0.5
+     do
+         GPU=0
+         CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef${penalty}_rollout${rollout}_norm_v2.log &
+     done
+done
 
 
 # F=0.1
