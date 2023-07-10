@@ -5,6 +5,7 @@ import random
 
 import gym
 import d4rl
+import time
 
 import numpy as np
 import torch
@@ -204,7 +205,7 @@ def train(args=get_args()):
     else:
         print("Dynamics model does not exist, training")
         dynamics.train(real_buffer.sample_all(), dataset, logger, max_epochs=args.dynamics_epochs, use_tqdm=0)
-        
+    
     # create policy
     policy = COMBOPolicy(
         dynamics,
@@ -250,4 +251,6 @@ def train(args=get_args()):
 
 
 if __name__ == "__main__":
+    t0 = time.time()
     train()
+    print(f'time: {time.time()-t0} sec')
