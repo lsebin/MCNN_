@@ -78,6 +78,10 @@ def train(args=get_args()):
     # create env and dataset
     env = gym.make(args.task)
     dataset = qlearning_dataset(env)
+    # from CQL
+    if 'antmaze' in args.task:
+        #dataset.rewards = (dataset.rewards - 0.5) * 4.0
+        dataset["rewards"] = (dataset["rewards"] - 0.5) * 4.0
     args.obs_shape = env.observation_space.shape
     args.action_dim = np.prod(env.action_space.shape)
     args.max_action = env.action_space.high[0]

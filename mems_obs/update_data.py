@@ -86,6 +86,8 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
         all_actions = np.concatenate([p['actions'] for p in train_paths])
         all_next_observations = np.concatenate([p[f'next_{choice}'] for p in train_paths])
         all_rewards = np.concatenate([p['rewards'] for p in train_paths])
+        
+        # all_sum_rewards = np.concatenate([p['sum_rewards'] for p in train_paths])
 
         all_observations_tensor = deepcopy(all_observations)
         all_observations_tensor = torch.from_numpy(all_observations_tensor).float().to(device)
@@ -97,6 +99,7 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
         memories_actions = []
         memories_next_obs = []
         memories_rewards = []
+        memories_sum_rewards = []
         for w in node_weights:
             dists = torch.cdist(w, all_observations_tensor)
             min_dists, nearest_point = dists.min(dim=1)
@@ -105,15 +108,18 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             memories_actions.append( all_actions[nearest_point] )
             memories_next_obs.append( all_next_observations[nearest_point] )
             memories_rewards.append( all_rewards[nearest_point] )
+            # memories_sum_rewards.append( all_sum_rewards[nearest_point] )
         memories = np.array(memories)
         memories_actions = np.array(memories_actions)
         memories_next_obs = np.array(memories_next_obs)
         memories_rewards = np.array(memories_rewards)
+        #memories_sum_rewards = np.array(memories_sum_rewards)
         print(f'{memories.shape=}, {memories_actions.shape=}, {memories_next_obs.shape=}, {memories_rewards.shape=}')
         memories = torch.from_numpy(memories).float().to(device)
         memories_actions = torch.from_numpy(memories_actions).float().to(device)
         memories_next_obs = torch.from_numpy(memories_next_obs).float().to(device)
         memories_rewards = torch.from_numpy(memories_rewards).float().to(device)
+        # memories_sum_rewards = torch.from_numpy(memories_sum_rewards).float().to(device)
         print(f'Finding memories took {time.time() - t0} seconds')
 
         # update train paths
@@ -133,6 +139,8 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             new_path['mem_actions'] = memories_actions[nearest_memories].cpu().numpy()
             new_path['mem_next_observations'] = memories_next_obs[nearest_memories].cpu().numpy()
             new_path['mem_rewards'] = memories_rewards[nearest_memories].cpu().numpy()
+            #new_path['mem_sum_rewards'] = memories_sum_rewards[nearest_memories].cpu().numpy()
+
 
             updated_train_paths.append(new_path)
         print(f'Updating train paths took {time.time() - t0} seconds')
@@ -142,7 +150,9 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             'memories_obs': memories.cpu().numpy(), 
             'memories_act': memories_actions.cpu().numpy(), 
             'memories_next_obs': memories_next_obs.cpu().numpy(),
-            'memories_rewards': memories_rewards.cpu().numpy()}
+            'memories_rewards': memories_rewards.cpu().numpy(),
+            #'memories_sum_rewards': memories_sum_rewards.cpu().numpy(),
+            }
         with open(save_name, 'wb') as f:
             pickle.dump(data, f)
     else:

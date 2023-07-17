@@ -12,7 +12,7 @@ SEED=1
 # carla-lane-v0 
 # carla-town-v0
 
-task='antmaze-medium-play-v2' #'halfcheetah-medium-replay-v2' #'antmaze-medium-play-v2' #'halfcheetah-medium-replay-v2'
+task='antmaze-umaze-v2' #'halfcheetah-medium-replay-v2' #'antmaze-medium-play-v2' #'halfcheetah-medium-replay-v2'
 mkdir algos/logs/${task}
 mkdir algos/logs/${task}/${AlgoType}
 
@@ -20,17 +20,18 @@ lamda=0.1
 F=0.1
 Lipz=1.0
 
-AlgoType=combo_original
+#AlgoType=combo_original
+AlgoType=cql_original
 mkdir algos/logs/${task}/${AlgoType}
 GPU=1
-CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo_original.py --task ${task} --seed ${SEED}> algos/logs/${task}/${AlgoType}/seed${SEED}.log &
+CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_cql_original.py --task ${task} --seed ${SEED}> algos/logs/${task}/${AlgoType}/seed${SEED}.log &
 #CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo_original.py --task ${task} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F} --seed ${SEED}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}.log &
 
 AlgoType=mopo_original
 mkdir algos/logs/${task}/${AlgoType}
 GPU=0
 #CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_mopo_original.py --task ${task} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F} --seed ${SEED}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}.log &
-CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_mopo_original.py --task ${task} --seed ${SEED}> algos/logs/${task}/${AlgoType}/seed${SEED}.log &
+CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_mopo_original.py --task ${task} --seed ${SEED}> algos/logs/${task}/${AlgoType}/seed${SEED}_v2.log &
 
 # for TASK in halfcheetah walker2d hopper
 # do

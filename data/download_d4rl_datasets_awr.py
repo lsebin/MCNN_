@@ -23,15 +23,31 @@ def download(name):
 
 	episode_step = 0
 	paths = []
+	total_sum_rewards = []
 	for i in range(N):
+		total_sum=0
+		done_bool = bool(dataset['terminals'][i])
+		if use_timeouts:
+			final_timestep = dataset['timeouts'][i]
+		else:
+			final_timestep = (episode_step == 1000-1)
+   
+		while not (bool(dataset['terminals'][i]) or (dataset['timeouts'][i] if use_timeouts else (episode_step == 1000-1))):
+			total_sum += dataset['rewards']
+		total_sum_rewards.append(total_sum)
+		
+	for i in range(N):
+		sum_until = 0
 		done_bool = bool(dataset['terminals'][i])
 		if use_timeouts:
 			final_timestep = dataset['timeouts'][i]
 		else:
 			final_timestep = (episode_step == 1000-1)
 
-		for k in ['observations', 'next_observations', 'actions', 'rewards', 'terminals']:
+		for k in ['observations', 'next_observations', 'actions', 'rewards' ,'terminals']:
 			data_[k].append(dataset[k][i])
+			sum_until += dataset['rewards'][i]
+			data_['sum_rewards'].append(total_sum_rewards[i]-sum_until)
 		if done_bool or final_timestep:
 			episode_step = 0
 			episode_data = {}
@@ -74,13 +90,13 @@ for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expe
 
 # upgrade to numpy = 1.24... and try running it again
 
-for env_name in ['antmaze-large']:#['antmaze-umaze', 'antmaze-medium', 'antmaze-large']
+for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
 	if env_name == 'antmaze-umaze':
 		for dataset_type in ['-diverse', '']:
 			name = f'{env_name}{dataset_type}-v0'
 			download(name)
 	else :
-		for dataset_type in ['diverse']:#['diverse', 'play']
+		for dataset_type in ['diverse', 'play']:
 			name = f'{env_name}-{dataset_type}-v0'
 			download(name)
 

@@ -4,10 +4,10 @@ for ENV in antmaze  #hopper walker2d
 do
      for TYPE in large-diverse large-play medium-diverse medium-play umaze-diverse umaze #medium expert random medium-replay medium-expert
      do
-         mkdir mems_obs/logs/${ENV}-${TYPE}-v2
+         mkdir mems_obs/logs/${ENV}-${TYPE}-v0
          for F in 0.1
          do
-            nohup python -u mems_obs/create_gng_incrementally.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/create_gng_${F}_frac_percentbc.log &
+            nohup python -u mems_obs/create_gng_incrementally.py --name ${ENV}-${TYPE}-v0 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v0/create_gng_${F}_frac_percentbc.log &
          done 
      done
 done
