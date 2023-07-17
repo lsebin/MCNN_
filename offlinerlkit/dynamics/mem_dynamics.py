@@ -153,14 +153,15 @@ class MemDynamics(object):
                 mem_next_obss = self.find_memories_penalty(torch.from_numpy(next_obss).float().to(self.device))
                 delta_mem_next_obss = np.power(next_obss-mem_next_obss, 2)
                 penalty = np.sqrt(np.einsum('ij -> i', delta_mem_next_obss))
-                #penalty= 1 / penalty
                 penalty = -1 * penalty.reshape(rewards.shape[0], 1)
-                #penalty = penalty.reshape(rewards.shape[0], 1)
-                #np.clip(penalty,0,10, penalty)
+                
+                # penalty= 1 / penalty
+                # penalty = penalty.reshape(rewards.shape[0], 1)
+                # np.clip(penalty,0,10, penalty)
                 
                 # Penalty 2
                 assert penalty.shape == rewards.shape
-                rewards = rewards + self.penalty_coef * penalty
+                #rewards = rewards + self.penalty_coef * penalty
                 info["penalty"] = penalty
                 # print(f'after clip {penalty.min()=} {penalty.max()=} \n')
 
@@ -203,8 +204,12 @@ class MemDynamics(object):
         mem_obss = (mem_obss - self.obss_mean) / self.obss_std
         mem_next_obss = (mem_next_obss - self.obss_mean) / self.obss_std
         # mem_actions = (mem_actions - self.actions_mean) / self.actions_std
-        
+        print(rewards)
+        print(np.max(rewards))
         rewards = (rewards - self.rewards_mean) / self.abs_max_rewards_diff
+        print(rewards)
+        print(np.max(rewards))
+        
         mem_rewards = (mem_rewards - self.rewards_mean) / self.abs_max_rewards_diff
         
         inputs = np.concatenate((obss, actions), axis=-1)

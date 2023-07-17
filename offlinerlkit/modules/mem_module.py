@@ -37,6 +37,7 @@ class MemDynamicsModel(MLP):
         lamda_in_exp = self.lamda * 10 # self.lamda * self.Lipz * 10
         exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
         outputs = self.model(inputs)
+        #print(outputs)
         #print(mem_targets)
         #print(exp_lamda_dist)
         preds = mem_targets * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * self.memory_act(

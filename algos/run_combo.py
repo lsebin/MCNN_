@@ -82,6 +82,7 @@ def get_args():
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     
+    parser.add_argument("--rollout-gamma", type=float, default=1.0)
     parser.add_argument("--penalty-coef", type=float, default=0) # start testing with 0.05
     parser.add_argument('--Lipz', type=float, default=1.0)
     parser.add_argument('--lamda', type=float, default=1.0)
@@ -218,6 +219,7 @@ def train(args=get_args()):
         action_space=env.action_space,
         tau=args.tau,
         gamma=args.gamma,
+        rollout_gamma=args.rollout_gamma,
         alpha=alpha,
         cql_weight=args.cql_weight,
         temperature=args.temperature,

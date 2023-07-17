@@ -1,16 +1,28 @@
 mkdir mems_obs/logs 
 
-for ENV in halfcheetah  #hopper walker2d
+for ENV in antmaze  #hopper walker2d
 do
-     for TYPE in medium-replay  #medium expert random medium-replay medium-expert
+     for TYPE in large-diverse large-play medium-diverse medium-play umaze-diverse umaze #medium expert random medium-replay medium-expert
      do
          mkdir mems_obs/logs/${ENV}-${TYPE}-v2
-         for F in 0.5 0.6 #0.25 0.3 0.2 0.4 0.3
+         for F in 0.1
          do
             nohup python -u mems_obs/create_gng_incrementally.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/create_gng_${F}_frac_percentbc.log &
          done 
      done
 done
+
+# for ENV in halfcheetah  #hopper walker2d
+# do
+#      for TYPE in medium-replay  #medium expert random medium-replay medium-expert
+#      do
+#          mkdir mems_obs/logs/${ENV}-${TYPE}-v2
+#          for F in 0.5 0.6 #0.25 0.3 0.2 0.4 0.3
+#          do
+#             nohup python -u mems_obs/create_gng_incrementally.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/create_gng_${F}_frac_percentbc.log &
+#          done 
+#      done
+# done
 
 
 # for ENV in hammer pen relocate door

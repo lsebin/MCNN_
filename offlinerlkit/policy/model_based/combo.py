@@ -27,6 +27,7 @@ class COMBOPolicy(CQLPolicy):
         action_space: gym.spaces.Space,
         tau: float = 0.005,
         gamma: float  = 0.99,
+        rollout_gamma: float = 1.0,
         alpha: Union[float, Tuple[float, torch.Tensor, torch.optim.Optimizer]] = 0.2,
         cql_weight: float = 1.0,
         temperature: float = 1.0,
@@ -61,6 +62,8 @@ class COMBOPolicy(CQLPolicy):
         )
 
         self.dynamics = dynamics
+        self.rollout_gamma = rollout_gamma
+        print(self.rollout_gamma)
         self._uniform_rollout = uniform_rollout
         self._rho_s = rho_s
 
@@ -78,7 +81,7 @@ class COMBOPolicy(CQLPolicy):
 
         # rollout
         observations = init_obss
-        for _ in range(rollout_length):
+        for t in range(rollout_length):
             if self._uniform_rollout:
                 actions = np.random.uniform(
                     self.action_space.low[0],
@@ -87,7 +90,19 @@ class COMBOPolicy(CQLPolicy):
                 )
             else:
                 actions = self.select_action(observations)
+            
             next_observations, rewards, terminals, info = self.dynamics.step(observations, actions)
+            
+            print(rewards)
+            
+            #added for penalty
+            '''
+            if self.dynamics.penalty_coef:
+                penalty = info["penalty"]
+                penalty_arr = np.append(penalty_arr, penalty.flatten())
+                rewards = rewards + (self.dynamics.penalty_coef * penalty) * np.power(self.rollout_gamma, rollout_length-t)
+            '''
+            
             rollout_transitions["obss"].append(observations)
             rollout_transitions["next_obss"].append(next_observations)
             rollout_transitions["actions"].append(actions)
@@ -96,11 +111,6 @@ class COMBOPolicy(CQLPolicy):
             
             num_transitions += len(observations)
             rewards_arr = np.append(rewards_arr, rewards.flatten())
-            
-            #added for penalty
-            if self.dynamics.penalty_coef:
-                penalty = info["penalty"]
-                penalty_arr = np.append(penalty_arr, penalty.flatten())
             
             raw_rewards = info["raw_reward"]
             raw_rewards_arr = np.append(raw_rewards_arr, raw_rewards.flatten())
@@ -203,6 +213,8 @@ class COMBOPolicy(CQLPolicy):
         # Samples from the original dataset
         real_obss, real_actions = real_batch['observations'], real_batch['actions']
         q1, q2 = self.critic1(real_obss, real_actions), self.critic2(real_obss, real_actions)
+        
+        '''
 
         conservative_loss1 = \
             torch.logsumexp(cat_q1 / self._temperature, dim=1).mean() * self._cql_weight * self._temperature - \
@@ -220,9 +232,10 @@ class COMBOPolicy(CQLPolicy):
             cql_alpha_loss = -(conservative_loss1 + conservative_loss2) * 0.5
             cql_alpha_loss.backward(retain_graph=True)
             self.cql_alpha_optim.step()
+        '''
         
-        critic1_loss = critic1_loss + conservative_loss1
-        critic2_loss = critic2_loss + conservative_loss2
+        #critic1_loss = critic1_loss + conservative_loss1
+        #critic2_loss = critic2_loss + conservative_loss2
 
         # update critic
         self.critic1_optim.zero_grad()

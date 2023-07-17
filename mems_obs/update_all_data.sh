@@ -1,16 +1,28 @@
 mkdir mems_obs/logs_re
 
- for ENV in hopper #walker2d halfcheetah
- do
-     for TYPE in medium-replay # medium expert random medium-replay medium-expert
+for ENV in antmaze  #hopper walker2d
+do
+     for TYPE in umaze umaze-diverse #large-diverse large-play medium-diverse medium-play 
      do
-         mkdir mems_obs/logs_re/${ENV}-${TYPE}-v2
-         for F in 0.2 #0.3 0.4  #0.01 0.025 0.05 0.1 0.25 0.3
+         mkdir mems_obs/logs/${ENV}-${TYPE}-v2
+         for F in 0.1 #0.3 0.4  #0.01 0.025 0.05 0.1 0.25 0.3
          do
-            CUDA_VISIBLE_DEVICES=0 nohup python -u mems_obs/update_data.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/update_data_${F}_frac_percentbc.log &
+            CUDA_VISIBLE_DEVICES=1 nohup python -u mems_obs/update_data.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/update_data_${F}_frac_percentbc.log &
          done 
      done
  done
+
+#  for ENV in hopper #walker2d halfcheetah
+#  do
+#      for TYPE in medium-replay # medium expert random medium-replay medium-expert
+#      do
+#          mkdir mems_obs/logs_re/${ENV}-${TYPE}-v2
+#          for F in 0.2 #0.3 0.4  #0.01 0.025 0.05 0.1 0.25 0.3
+#          do
+#             CUDA_VISIBLE_DEVICES=0 nohup python -u mems_obs/update_data.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/update_data_${F}_frac_percentbc.log &
+#          done 
+#      done
+#  done
 
 
 # for ENV in hammer pen relocate door

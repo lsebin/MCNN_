@@ -3,7 +3,7 @@
 
 
 percent=1.0
-AlgoType=combo_memdynamic_policy # bc OR td3bc
+AlgoType=mopo_memdynamic_policy # bc OR td3bc
 SEED=1
 
 # hammer-human-v1 pen-human-v1 relocate-human-v1 door-human-v1
@@ -12,9 +12,25 @@ SEED=1
 # carla-lane-v0 
 # carla-town-v0
 
-task='halfcheetah-medium-replay-v2'
+task='antmaze-medium-play-v2' #'halfcheetah-medium-replay-v2' #'antmaze-medium-play-v2' #'halfcheetah-medium-replay-v2'
+mkdir algos/logs/${task}
 mkdir algos/logs/${task}/${AlgoType}
 
+lamda=0.1
+F=0.1
+Lipz=1.0
+
+AlgoType=combo_original
+mkdir algos/logs/${task}/${AlgoType}
+GPU=1
+CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo_original.py --task ${task} --seed ${SEED}> algos/logs/${task}/${AlgoType}/seed${SEED}.log &
+#CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo_original.py --task ${task} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F} --seed ${SEED}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}.log &
+
+AlgoType=mopo_original
+mkdir algos/logs/${task}/${AlgoType}
+GPU=0
+#CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_mopo_original.py --task ${task} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F} --seed ${SEED}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}.log &
+CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_mopo_original.py --task ${task} --seed ${SEED}> algos/logs/${task}/${AlgoType}/seed${SEED}.log &
 
 # for TASK in halfcheetah walker2d hopper
 # do
@@ -53,17 +69,18 @@ Lipz=1.0
 # done
 
 lamda=1.0
-rollout=10
+rollout=3
 rr=0.75
+F=0.1
 
- for F in 0.2 # 0.4 #0.3 0.2 #0.25
+ for F in 0.1 # 0.4 #0.3 0.2 #0.25
 # #for penalty in 0.3 0.4 0.5 #0.15 0.125 0.01 0.1 0.025 0.075 0.05
  do
-      for penalty in 0.4
+      for penalty in 0
       do
           GPU=0
-          CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef${penalty}_rollout${rollout}_norm_v2.log &
-          #CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_rollout${rollout}_norm_v2.log &
+          #CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --rollout-gamma ${gamma} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef${penalty}_rollout${rollout}_gamma${gamma}_v2.log &
+          #CUDA_VISIBLE_DEVICES=${GPU} nohup python -u algos/run_combo.py --task ${task} --real-ratio ${rr} --rollout-length ${rollout} --penalty-coef ${penalty} --Lipz ${Lipz} --lamda ${lamda} --num_memories_frac ${F}> algos/logs/${task}/${AlgoType}/frac${F}_Lipz${Lipz}_lamda${lamda}_seed${SEED}_real-ratio${rr}_coef${penalty}_rollout${rollout}_v2.log &
       done
  done
 

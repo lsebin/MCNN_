@@ -388,7 +388,7 @@ def make_log_dirs(
     seed: int,
     args: Dict,
     record_params: Optional[List]=None,
-    root_dir = "algos/exp",
+    root_dir = "log",
 ) -> str:
     if record_params is not None:
         for param_name in record_params:

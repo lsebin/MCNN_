@@ -155,7 +155,6 @@ def qlearning_dataset_memories(task, train_size, num_memories_frac):
     mem_next_observations = np.concatenate([path['mem_next_observations'] for path in train_paths], axis=0)
     mem_rewards = np.concatenate([path['mem_rewards'] for path in train_paths], axis=0)
     
-
     # test_observations = np.concatenate([path['observations'] for path in test_paths], axis=0)
     # test_actions = np.concatenate([path['actions'] for path in test_paths], axis=0)
     # test_next_observations = np.concatenate([path['next_observations'] for path in test_paths], axis=0)
