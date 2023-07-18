@@ -73,11 +73,11 @@ def download(name):
 	print(f'Number of episodes: {len(returns)}')
 	print(f'Trajectory returns: mean = {np.mean(returns)}, std = {np.std(returns)}, max = {np.max(returns)}, min = {np.min(returns)}')
 
-	with open(f'data/datasets/{name}.pkl', 'wb') as f:
+	with open(f'data/datasets_sum/{name}.pkl', 'wb') as f:
 		pickle.dump(paths, f)
 
 
-os.makedirs('data/datasets', exist_ok=True)
+os.makedirs('data/datasets_sum', exist_ok=True)
 # for env_name in ['halfcheetah', 'hopper', 'walker2d']:
 #  	for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expert']:
 #  		name = f'{env_name}-{dataset_type}-v2'
@@ -100,13 +100,13 @@ for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expe
 # upgrade to numpy = 1.24... and try running it again
 
    
-for env_name in ['antmaze-large']:#['antmaze-umaze', 'antmaze-medium', 'antmaze-large']
+for env_name in ['antmaze-umaze']:#['antmaze-umaze', 'antmaze-medium', 'antmaze-large']
 	if env_name == 'antmaze-umaze':
 		for dataset_type in ['-diverse', '']:
 			name = f'{env_name}{dataset_type}-v0'
 			download(name)
 	else :
-		for dataset_type in ['play']:#['diverse', 'play']
+		for dataset_type in ['diverse', 'play']:
 			name = f'{env_name}-{dataset_type}-v0'
 			download(name)
 

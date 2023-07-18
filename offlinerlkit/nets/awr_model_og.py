@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 from torch.nn import init
+from offlinerlkit.modules import MemActor
 
 FixedNormal = Normal
 log_prob_normal = FixedNormal.log_prob
@@ -109,7 +110,7 @@ class Flatten(nn.Module):
 
 
 class BaseActorCriticNetwork(nn.Module):
-    def __init__(self, input_size, output_size, use_noisy_net=False, use_continuous=False):
+    def __init__(self, input_size, output_size, action_dim, Lipz, lamda, device, use_noisy_net=False, use_continuous=False):
         super(BaseActorCriticNetwork, self).__init__()
         if use_noisy_net:
             linear = NoisyLinear
@@ -124,20 +125,25 @@ class BaseActorCriticNetwork(nn.Module):
         #     linear(128, 128),
         #     nn.ReLU()
         # )
-        self.actor = nn.Sequential(
+        
+        actor_backbone = nn.Sequential(
             linear(input_size, 128),
             nn.ReLU(),
             linear(128, 64),
             nn.ReLU(),
             GuaussianAction(64, output_size) if use_continuous else linear(64, output_size)
         )
-        self.critic = nn.Sequential(
+        
+        critic_backbone = nn.Sequential(
             linear(input_size, 128),
             nn.ReLU(),
             linear(128, 64),
             nn.ReLU(),
             linear(64, 1)
         )
+        
+        self.actor = MemActor(actor_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)
+        self.critic = MemActor(critic_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)
 
         for p in self.modules():
             if isinstance(p, nn.Conv2d):

@@ -85,15 +85,16 @@ def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, 
         'mem_actions': mem_actions,
         'mem_next_observations': mem_next_observations,
         'mem_rewards': mem_rewards,
-        # 'memories_obs': memories_obs,
-        # 'memories_actions': memories_act,
-        # 'memories_next_obs': memories_next_obs,
-        # 'memories_rewards': memories_rewards,
+        'memories_obs': memories_obs,
+        'memories_actions': memories_act,
+        'memories_next_obs': memories_next_obs,
+        'memories_rewards': memories_rewards,
     }
     
     if is_awr:
         dataset.update({'sum_rewards': np.concatenate([path['sum_rewards'] for path in train_paths], axis=0),
-                        'mem_sum_rewards' : np.concatenate([path['mem_sum_rewards'] for path in train_paths], axis=0),})
+                        'mem_sum_rewards' : np.concatenate([path['mem_sum_rewards'] for path in train_paths], axis=0),
+                        'memories_sum_rewards': dataset["memories_sum_rewards"], })
     
     return dataset
   

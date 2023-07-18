@@ -99,13 +99,19 @@ class ActorAgent(object):
             input_size,
             output_size,
             gamma,
+            dataset,
+            action_dim,
+            Lipz,
+            lamda,
+            device,
             lam=0.95,
             use_gae=True,
             use_cuda=False,
             use_noisy_net=False,
             use_continuous=False):
         self.model = BaseActorCriticNetwork(
-            input_size, output_size, use_noisy_net, use_continuous=use_continuous)
+            input_size, output_size, action_dim, Lipz, lamda, device,
+            use_noisy_net=use_noisy_net, use_continuous=use_continuous)
         self.continuous_agent = use_continuous
 
         self.output_size = output_size
@@ -120,22 +126,29 @@ class ActorAgent(object):
                                            lr=0.0001, momentum=0.9)
         self.device = torch.device('cuda' if use_cuda else 'cpu')
         self.model = self.model.to(self.device)
-
-    def get_action(self, state):
-        # state = torch.Tensor(state).to(self.device).reshape(1,-1)
-        # state = state.float()
-        state = torch.tensor(state).float().reshape(1, -1)
         
-        # need to also give memory and memory target
-        policy, value = self.model(state, mem_state, mem_action, mem_sum_rewards)
+        self.nodes_obs = torch.from_numpy(dataset["memories_obs"]).float().to(self.device)
+        self.nodes_actions = torch.from_numpy(dataset["memories_actions"]).float().to(self.device)
+        self.nodes_next_obs = torch.from_numpy(dataset["memories_next_obs"]).float().to(self.device)
+        self.nodes_rewards = torch.from_numpy(dataset["memories_rewards"]).float().to(self.device).unsqueeze(1)
+        self.nodes_sum_rewards = torch.from_numpy(dataset["memories_sum_rewards"]).float().to(self.device).unsqueeze(1)
+        
+        
+    # def get_action(self, state):
+    #     # state = torch.Tensor(state).to(self.device).reshape(1,-1)
+    #     # state = state.float()
+    #     state = torch.tensor(state).float().reshape(1, -1)
+        
+    #     # need to also give memory and memory target
+    #     policy, value = self.model(state, mem_state, mem_action, mem_sum_rewards)
 
-        if self.continuous_agent:
-            action = policy.sample().numpy().reshape(-1)
-        else:
-            policy = F.softmax(policy, dim=-1).data.cpu().numpy()
-            action = np.random.choice(np.arange(self.output_size), p=policy[0])
+    #     if self.continuous_agent:
+    #         action = policy.sample().numpy().reshape(-1)
+    #     else:
+    #         policy = F.softmax(policy, dim=-1).data.cpu().numpy()
+    #         action = np.random.choice(np.arange(self.output_size), p=policy[0])
 
-        return action
+    #     return action
 
     def train_model(self, s_batch, action_batch, reward_batch, n_s_batch, done_batch):
         s_batch = np.array(s_batch)
@@ -145,16 +158,28 @@ class ActorAgent(object):
 
         data_len = len(s_batch)
         mse = nn.MSELoss()
+        
+        # find closest memory
+        _, closest_nodes = torch.cdist(s_batch, self.nodes_inputs).min(dim=1)
+        mem_state = self.nodes_obs[closest_nodes, :]
+        mem_action = self.nodes_actions[closest_nodes, :]
+        mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
+        dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
 
         # update critic
         self.critic_optimizer.zero_grad()
-        cur_value = self.model.critic(torch.FloatTensor(s_batch))
+        cur_values = self.model.critic(s_batch, mem_state, mem_sum_rewards, dist, beta=0)
+        #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
         # discounted_reward = (discounted_reward - discounted_reward.mean())/(discounted_reward.std() + 1e-8)
         for _ in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), 256)
-            sample_value = self.model.critic(torch.FloatTensor(s_batch[sample_idx]))
+            # _, closest_nodes = torch.cdist(s_batch[sample_idx], self.nodes_inputs).min(dim=1)
+            # mem_state = self.nodes_obs[closest_nodes, :]
+            # mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
+            # dist = torch.norm(s_batch[sample_idx] - mem_state, p=2, dim=1).unsqueeze(1)
+            sample_value = self.model.critic(s_batch[sample_idx], mem_state[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
             if (torch.sum(torch.isnan(sample_value)) > 0):
                 print('NaN in value prediction')
                 input()
@@ -164,17 +189,23 @@ class ActorAgent(object):
             self.critic_optimizer.zero_grad()
 
         # update actor
-        cur_value = self.model.critic(torch.FloatTensor(s_batch))
+        cur_values = self.model.critic(s_batch, mem_state, mem_sum_rewards, dist, beta=0)
+        #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
         print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
         print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
-        # adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+        adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         self.actor_optimizer.zero_grad()
         for _ in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
-            cur_policy = self.model.actor(torch.FloatTensor(s_batch[sample_idx]))
+            # cur_policy = self.model.actor(torch.FloatTensor(s_batch[sample_idx]))
+            #  _, closest_nodes = torch.cdist(s_batch[sample_idx], self.nodes_inputs).min(dim=1)
+            # mem_state = self.nodes_obs[closest_nodes, :]
+            # mem_action = self.nodes_actions[closest_nodes, :]
+            # dist = torch.norm(s_batch[sample_idx] - mem_state, p=2, dim=1).unsqueeze(1)
+            cur_policy = self.model.actor(s_batch[sample_idx], mem_state[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
 
             if self.continuous_agent:
                 probs = -cur_policy.log_probs(torch.tensor(action_batch[sample_idx]).float())
@@ -215,7 +246,7 @@ def discount_return(reward, done, value):
 if __name__ == '__main__':
     args = get_args()
     # env_id = 'CartPole-v1'
-    env_id = 'Pendulum-v0'
+    # env_id = 'Pendulum-v0'
     # env_id = 'LunarLanderContinuous-v2'
     # env_id = 'Acrobot-v1'
     # env_id = 'BipedalWalker-v2'
@@ -224,10 +255,28 @@ if __name__ == '__main__':
 
     continuous = isinstance(env.action_space, gym.spaces.Box)
     print('Env is continuous: {}'.format(continuous))
+    
+    args.action_dim = np.prod(env.action_space.shape)
 
     input_size = env.observation_space.shape[0]  # 4
     output_size = env.action_space.shape[0] if continuous else env.action_space.n  # 2
     env.close()
+    
+    is_awr = True
+    dataset = qlearning_dataset_percentbc_awr(args.task, args.chosen_percentage, args.num_memories_frac, is_awr)
+    if 'antmaze' in args.task:
+        dataset["rewards"] -= 1.0
+        
+    buffer = ReplayBuffer(
+        buffer_size=len(dataset["observations"]),
+        obs_shape=args.obs_shape,
+        obs_dtype=np.float32,
+        action_dim=args.action_dim,
+        action_dtype=np.float32,
+        device=args.device
+    )
+    buffer.load_dataset(dataset)
+    obs_mean, obs_std = buffer.normalize_obs()
 
     use_cuda = False
     use_noisy_net = False
@@ -248,31 +297,21 @@ if __name__ == '__main__':
         input_size,
         output_size,
         args.gamma,
+        dataset,
+        args.action_dim,
+        args.Lipz,
+        args.lamda,
+        args.device,
         use_gae=use_gae,
         use_cuda=use_cuda,
         use_noisy_net=use_noisy_net,
-        use_continuous=continuous)
+        use_continuous=continuous,
+        )
     is_render = False
 
     #env = RLEnv(env_id, is_render)
-    env = RLEnv(args.task, is_render)
+    #env = RLEnv(args.task, is_render)
     
-    is_awr = True
-    dataset = qlearning_dataset_percentbc_awr(args.task, args.chosen_percentage, args.num_memories_frac, is_awr)
-    if 'antmaze' in args.task:
-        dataset["rewards"] -= 1.0
-        
-    buffer = ReplayBuffer(
-        buffer_size=len(dataset["observations"]),
-        obs_shape=args.obs_shape,
-        obs_dtype=np.float32,
-        action_dim=args.action_dim,
-        action_dtype=np.float32,
-        device=args.device
-    )
-    buffer.load_dataset(dataset)
-    obs_mean, obs_std = buffer.normalize_obs()
-
     # states, actions, rewards, next_states, dones = deque(maxlen=max_replay), deque(maxlen=max_replay), deque(
     #     maxlen=max_replay), deque(maxlen=max_replay), deque(maxlen=max_replay)
 
@@ -280,7 +319,7 @@ if __name__ == '__main__':
 
     for i in range(iteration):
         batch = buffer.sample(args.batch_size)
-        states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'] # what for dones?
+        states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'], batch["terminals"]
         # Online RL part here
         # done = False
         # score = 0

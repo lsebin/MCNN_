@@ -36,7 +36,7 @@ args = parser.parse_args()
 print(f'\n\n\n\n')
 
 # setup
-folder = f'mems_obs/updated_datasets_re'
+folder = f'mems_obs/updated_datasets'
 os.makedirs(folder, exist_ok=True)
 
 # load paths and top_paths
