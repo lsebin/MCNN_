@@ -147,12 +147,27 @@ class BaseActorCriticNetwork(nn.Module):
             if isinstance(p, nn.Linear):
                 init.xavier_normal_(p.weight)
                 p.bias.data.zero_()
-
-    def forward(self, state):
+                
+    # everything here needs to take memory and memory target
+    def forward(self, state, mem_state, mem_action, mem_sum_rewards): # state, memory state, memory action, memeroy sum of rewards
         # x = self.feature(state)
-        policy = self.actor(state)
-        value = self.critic(state)
+        #policy = self.actor(state) # m_a e^(-lamda d) + L(1-e^(-lambda d)self.actor(state)) d is distanc ebetween s and memory state
+        dist = self.compute_distances(state, mem_state)
+        policy = mem_action * torch.exp(-self.lamda * dist) + self.Lipz *(1-torch.exp(-self.lamda * dist)) * self.actor(state)
+        # one for action and one for sum of rewards
+        #value = self.critic(state) # copy 154 but change m_a to m_r and chane goto 
+        value = mem_sum_rewards * torch.exp(-self.lamda * dist) + self.Lipz *(1-torch.exp(-self.lamda * dist)) * self.critic(state)
         return policy, value
+    
+    def compute_distances(self, inputs, mem_inputs, dim=1, pnorm=2):
+        dist = torch.norm(inputs - mem_inputs, p=pnorm, dim=dim).unsqueeze(1)
+
+        mean_dists = torch.mean(dist); max_dists = torch.max(dist); min_dists = torch.min(dist)
+        self.diagnostics[f'dist/train/mean'] = mean_dists.item()
+        self.diagnostics[f'dist/train/max'] = max_dists.item()
+        self.diagnostics[f'dist/train/min'] = min_dists.item()
+            
+        return dist
 
 
 class DeepCnnActorCriticNetwork(nn.Module):

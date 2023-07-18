@@ -47,6 +47,56 @@ def qlearning_dataset_percentbc(task, chosen_percentage, num_memories_frac):
         'memories_rewards': memories_rewards,
     }
     
+def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, is_awr):
+    
+    full_name = f'mems_obs/updated_datasets_re/{task}-{chosen_percentage}/updated_{num_memories_frac}_frac.pkl'
+    with open(full_name, 'rb') as f:
+            data = pickle.load(f)
+
+    train_paths, memories_obs, memories_act, memories_next_obs, memories_rewards = data['train_paths'], data['memories_obs'], data['memories_act'], data['memories_next_obs'], data['memories_rewards']
+
+    choice = 'embeddings' if 'carla' in task else 'observations'
+
+    obs_dim = train_paths[0][choice].shape[1]
+    act_dim = train_paths[0]['actions'].shape[1]
+    print(f'{obs_dim=}, {act_dim=}')
+
+    observations = np.concatenate([path[choice] for path in train_paths], axis=0)
+    actions = np.concatenate([path['actions'] for path in train_paths], axis=0)
+    next_observations = np.concatenate([path[f'next_{choice}'] for path in train_paths], axis=0)
+    rewards = np.concatenate([path['rewards'] for path in train_paths], axis=0)
+    
+    for path in train_paths:
+        path['terminals'][-1] = 1.0
+    terminals = np.concatenate([path['terminals'] for path in train_paths], axis=0).astype(np.float32)
+
+    mem_observations = np.concatenate([path['mem_observations'] for path in train_paths], axis=0)
+    mem_actions = np.concatenate([path['mem_actions'] for path in train_paths], axis=0)
+    mem_next_observations = np.concatenate([path['mem_next_observations'] for path in train_paths], axis=0)
+    mem_rewards = np.concatenate([path['mem_rewards'] for path in train_paths], axis=0)
+        
+    dataset = {
+        'observations': observations,
+        'actions': actions,
+        'next_observations': next_observations,
+        'rewards': rewards,
+        'terminals': terminals,
+        'mem_observations': mem_observations,
+        'mem_actions': mem_actions,
+        'mem_next_observations': mem_next_observations,
+        'mem_rewards': mem_rewards,
+        # 'memories_obs': memories_obs,
+        # 'memories_actions': memories_act,
+        # 'memories_next_obs': memories_next_obs,
+        # 'memories_rewards': memories_rewards,
+    }
+    
+    if is_awr:
+        dataset.update({'sum_rewards': np.concatenate([path['sum_rewards'] for path in train_paths], axis=0),
+                        'mem_sum_rewards' : np.concatenate([path['mem_sum_rewards'] for path in train_paths], axis=0),})
+    
+    return dataset
+  
 def qlearning_dataset(env, dataset=None, terminate_on_end=False, **kwargs):
     """
     Returns datasets formatted for use by standard Q-learning algorithms,

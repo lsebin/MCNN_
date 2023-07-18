@@ -4,10 +4,10 @@ for ENV in antmaze  #hopper walker2d
 do
      for TYPE in umaze umaze-diverse #large-diverse large-play medium-diverse medium-play 
      do
-         mkdir mems_obs/logs/${ENV}-${TYPE}-v2
+         mkdir mems_obs/logs/${ENV}-${TYPE}-v0
          for F in 0.1 #0.3 0.4  #0.01 0.025 0.05 0.1 0.25 0.3
          do
-            CUDA_VISIBLE_DEVICES=1 nohup python -u mems_obs/update_data.py --name ${ENV}-${TYPE}-v2 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v2/update_data_${F}_frac_percentbc.log &
+            CUDA_VISIBLE_DEVICES=1 nohup python -u mems_obs/update_data.py --name ${ENV}-${TYPE}-v0 --num_memories_frac ${F} > mems_obs/logs/${ENV}-${TYPE}-v0/update_data_${F}_frac_percentbc.log &
          done 
      done
  done

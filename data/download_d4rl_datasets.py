@@ -74,13 +74,13 @@ for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expe
 
 # upgrade to numpy = 1.24... and try running it again
 
-for env_name in ['antmaze-large']:#['antmaze-umaze', 'antmaze-medium', 'antmaze-large']
+for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
 	if env_name == 'antmaze-umaze':
 		for dataset_type in ['-diverse', '']:
 			name = f'{env_name}{dataset_type}-v0'
 			download(name)
 	else :
-		for dataset_type in ['diverse']:#['diverse', 'play']
+		for dataset_type in ['diverse', 'play']:
 			name = f'{env_name}-{dataset_type}-v0'
 			download(name)
 

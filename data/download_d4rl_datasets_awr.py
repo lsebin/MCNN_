@@ -22,7 +22,6 @@ def download(name):
 		use_timeouts = True
 
 	episode_step = 0
-	paths = []
 	total_sum_rewards = []
 	for i in range(N):
 		total_sum=0
@@ -32,11 +31,20 @@ def download(name):
 		else:
 			final_timestep = (episode_step == 1000-1)
    
-		while not (bool(dataset['terminals'][i]) or (dataset['timeouts'][i] if use_timeouts else (episode_step == 1000-1))):
+		if not (bool(dataset['terminals'][i]) or (dataset['timeouts'][i] if use_timeouts else (episode_step == 1000-1))):
 			total_sum += dataset['rewards']
-		total_sum_rewards.append(total_sum)
-		
+			episode_step += 1
+		else:
+			total_sum_rewards.append(total_sum)
+			total_sum = 0
+			episode_step = 0
+	
+	print(f"Saved sums and episode num :{len(total_sum_rewards)}")
+ 
+	episode_step = 0
+	paths = []
 	for i in range(N):
+		episode_num = 0
 		sum_until = 0
 		done_bool = bool(dataset['terminals'][i])
 		if use_timeouts:
@@ -46,8 +54,8 @@ def download(name):
 
 		for k in ['observations', 'next_observations', 'actions', 'rewards' ,'terminals']:
 			data_[k].append(dataset[k][i])
+			data_['sum_rewards'].append(total_sum_rewards[episode_num]-sum_until)
 			sum_until += dataset['rewards'][i]
-			data_['sum_rewards'].append(total_sum_rewards[i]-sum_until)
 		if done_bool or final_timestep:
 			episode_step = 0
 			episode_data = {}
@@ -55,6 +63,7 @@ def download(name):
 				episode_data[k] = np.array(data_[k])
 			paths.append(episode_data)
 			data_ = collections.defaultdict(list)
+			episode_num += 1
 		else:
 			episode_step += 1
 
@@ -90,13 +99,14 @@ for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expe
 
 # upgrade to numpy = 1.24... and try running it again
 
-for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
+   
+for env_name in ['antmaze-large']:#['antmaze-umaze', 'antmaze-medium', 'antmaze-large']
 	if env_name == 'antmaze-umaze':
 		for dataset_type in ['-diverse', '']:
 			name = f'{env_name}{dataset_type}-v0'
 			download(name)
 	else :
-		for dataset_type in ['diverse', 'play']:
+		for dataset_type in ['play']:#['diverse', 'play']
 			name = f'{env_name}-{dataset_type}-v0'
 			download(name)
 

@@ -1,4 +1,4 @@
-
+import argparse
 import random
 from collections import deque
 
@@ -7,9 +7,39 @@ import numpy as np
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
+from offlinerlkit.buffer import ReplayBuffer
 from torch.multiprocessing import Process
+from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc_awr
 
 from offlinerlkit.nets.awr_model_og import *
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--algo-name", type=str, default="awr", choices=["awr", "mem_awr"])
+    parser.add_argument("--task", type=str, default="hopper-expert-v2")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--actor-lr", type=float, default=3e-4)
+    parser.add_argument("--critic-lr", type=float, default=3e-4)
+    parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument("--tau", type=float, default=0.005)
+    parser.add_argument("--exploration-noise", type=float, default=0.1)
+    parser.add_argument("--policy-noise", type=float, default=0.2)
+    parser.add_argument("--noise-clip", type=float, default=0.5)
+    parser.add_argument("--update-actor-freq", type=int, default=2)
+    parser.add_argument("--alpha", type=float, default=2.5) # reassign to new hyper for AWR
+    parser.add_argument("--epoch", type=int, default=1000)
+    parser.add_argument("--step-per-epoch", type=int, default=1000)
+    parser.add_argument("--eval_episodes", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    
+    parser.add_argument('--chosen-percentage', type=float, default=0.1, choices=[0.1, 0.2, 0.5, 1.0])
+    parser.add_argument('--num_memories_frac', type=float, default=0.1)
+    parser.add_argument('--Lipz', type=float, default=15.0)
+    parser.add_argument('--lamda', type=float, default=1.0)
+    parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
+
+    return parser.parse_args()
 
 
 class RLEnv(Process):
@@ -95,7 +125,9 @@ class ActorAgent(object):
         # state = torch.Tensor(state).to(self.device).reshape(1,-1)
         # state = state.float()
         state = torch.tensor(state).float().reshape(1, -1)
-        policy, value = self.model(state)
+        
+        # need to also give memory and memory target
+        policy, value = self.model(state, mem_state, mem_action, mem_sum_rewards)
 
         if self.continuous_agent:
             action = policy.sample().numpy().reshape(-1)
@@ -165,7 +197,6 @@ def discount_return(reward, done, value):
     value = value.squeeze()
     num_step = len(value)
     discounted_return = np.zeros([num_step])
-
     gae = 0
     for t in range(num_step - 1, -1, -1):
         if done[t]:
@@ -182,13 +213,14 @@ def discount_return(reward, done, value):
 
 
 if __name__ == '__main__':
+    args = get_args()
     # env_id = 'CartPole-v1'
     env_id = 'Pendulum-v0'
     # env_id = 'LunarLanderContinuous-v2'
     # env_id = 'Acrobot-v1'
     # env_id = 'BipedalWalker-v2'
 
-    env = gym.make(env_id)
+    env = gym.make(args.task)
 
     continuous = isinstance(env.action_space, gym.spaces.Box)
     print('Env is continuous: {}'.format(continuous))
@@ -205,8 +237,8 @@ if __name__ == '__main__':
     actor_update_iter = 1000
     iteration = 100000
     max_replay = 50000
-
-    gamma = 0.99
+    
+    gamma = args.gamma
     lam = 0.95
     beta = 0.05
     max_weight = 20.0
@@ -215,48 +247,68 @@ if __name__ == '__main__':
     agent = ActorAgent(
         input_size,
         output_size,
-        gamma,
+        args.gamma,
         use_gae=use_gae,
         use_cuda=use_cuda,
         use_noisy_net=use_noisy_net,
         use_continuous=continuous)
     is_render = False
 
-    env = RLEnv(env_id, is_render)
+    #env = RLEnv(env_id, is_render)
+    env = RLEnv(args.task, is_render)
+    
+    is_awr = True
+    dataset = qlearning_dataset_percentbc_awr(args.task, args.chosen_percentage, args.num_memories_frac, is_awr)
+    if 'antmaze' in args.task:
+        dataset["rewards"] -= 1.0
+        
+    buffer = ReplayBuffer(
+        buffer_size=len(dataset["observations"]),
+        obs_shape=args.obs_shape,
+        obs_dtype=np.float32,
+        action_dim=args.action_dim,
+        action_dtype=np.float32,
+        device=args.device
+    )
+    buffer.load_dataset(dataset)
+    obs_mean, obs_std = buffer.normalize_obs()
 
-    states, actions, rewards, next_states, dones = deque(maxlen=max_replay), deque(maxlen=max_replay), deque(
-        maxlen=max_replay), deque(maxlen=max_replay), deque(maxlen=max_replay)
+    # states, actions, rewards, next_states, dones = deque(maxlen=max_replay), deque(maxlen=max_replay), deque(
+    #     maxlen=max_replay), deque(maxlen=max_replay), deque(maxlen=max_replay)
 
     last_done_index = -1
 
     for i in range(iteration):
-        done = False
-        score = 0
+        batch = buffer.sample(args.batch_size)
+        states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'] # what for dones?
+        # Online RL part here
+        # done = False
+        # score = 0
 
-        step = 0
-        episode = 0
-        state = env.reset()
+        # step = 0
+        # episode = 0
+        # state = env.reset()
 
-        while True:
-            step += 1
-            action = agent.get_action(state)
-            if (torch.sum(torch.isnan(torch.tensor(action).float()))):
-                print(action)
-                action = np.zeros_like(action)
-            next_state, reward, done, info = env.step(action)
-            states.append(np.array(state))
-            actions.append(action)
-            rewards.append(reward)
-            next_states.append(np.array(next_state))
-            dones.append(done)
+        # while True:
+        #     step += 1
+        #     action = agent.get_action(state)
+        #     if (torch.sum(torch.isnan(torch.tensor(action).float()))):
+        #         print(action)
+        #         action = np.zeros_like(action)
+        #     next_state, reward, done, info = env.step(action)
+        #     states.append(np.array(state))
+        #     actions.append(action)
+        #     rewards.append(reward)
+        #     next_states.append(np.array(next_state))
+        #     dones.append(done)
 
-            state = next_state[:]
+        #     state = next_state[:]
 
-            if done:
-                episode += 1
+        #     if done:
+        #         episode += 1
 
-                state = env.reset()
-                if step > num_sample:
-                    step = 0
-                    # train
-                    agent.train_model(states, actions, rewards, next_states, dones)
+        #         state = env.reset()
+        #         if step > num_sample:
+        #             step = 0
+        #             # train
+        agent.train_model(states, actions, rewards, next_states, dones)
