@@ -32,19 +32,22 @@ parser = argparse.ArgumentParser(description='Parse constants.')
 parser.add_argument('--name', default='halfcheetah-medium-v2', type=str, help="")
 parser.add_argument('--gng_epochs', default=1, type=int, help='num epochs for gng')
 parser.add_argument('--num_memories_frac', type=float, default=0.05) 
+parser.add_argument('--sum_rewards', type=bool, default=False) 
 args = parser.parse_args()
 print(f'\n\n\n\n')
 
 # setup
-folder = f'mems_obs/updated_datasets'
+folder = f'mems_obs/updated_datasets' if args.sum_rewards else f'mems_obs/updated_datasets_re'
 os.makedirs(folder, exist_ok=True)
+
+datafolder = 'datasets_sum' if args.sum_rewards else 'datasets'
 
 # load paths and top_paths
 if 'carla' in args.name:
-    with open(f'data/datasets/{args.name}_embeddings.pkl', 'rb') as f:
+    with open(f'data/{datafolder}/{args.name}_embeddings.pkl', 'rb') as f:
         all_paths = pickle.load(f)
 else:
-    with open(f'data/datasets/{args.name}.pkl', 'rb') as f:
+    with open(f'data/{datafolder}/{args.name}.pkl', 'rb') as f:
         all_paths = pickle.load(f)
 num_total_points = np.sum([p['rewards'].shape[0] for p in all_paths])
 with open(f'data/top_paths.pkl', 'rb') as f:
@@ -86,8 +89,8 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
         all_actions = np.concatenate([p['actions'] for p in train_paths])
         all_next_observations = np.concatenate([p[f'next_{choice}'] for p in train_paths])
         all_rewards = np.concatenate([p['rewards'] for p in train_paths])
-        
-        # all_sum_rewards = np.concatenate([p['sum_rewards'] for p in train_paths])
+        if args.sum_rewards:
+            all_sum_rewards = np.concatenate([p['sum_rewards'] for p in train_paths])
 
         all_observations_tensor = deepcopy(all_observations)
         all_observations_tensor = torch.from_numpy(all_observations_tensor).float().to(device)
@@ -108,18 +111,21 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             memories_actions.append( all_actions[nearest_point] )
             memories_next_obs.append( all_next_observations[nearest_point] )
             memories_rewards.append( all_rewards[nearest_point] )
-            # memories_sum_rewards.append( all_sum_rewards[nearest_point] )
+            if args.sum_rewards:
+                memories_sum_rewards.append( all_sum_rewards[nearest_point] )
         memories = np.array(memories)
         memories_actions = np.array(memories_actions)
         memories_next_obs = np.array(memories_next_obs)
         memories_rewards = np.array(memories_rewards)
-        #memories_sum_rewards = np.array(memories_sum_rewards)
+        if args.sum_rewards:
+            memories_sum_rewards = np.array(memories_sum_rewards)
         print(f'{memories.shape=}, {memories_actions.shape=}, {memories_next_obs.shape=}, {memories_rewards.shape=}')
         memories = torch.from_numpy(memories).float().to(device)
         memories_actions = torch.from_numpy(memories_actions).float().to(device)
         memories_next_obs = torch.from_numpy(memories_next_obs).float().to(device)
         memories_rewards = torch.from_numpy(memories_rewards).float().to(device)
-        # memories_sum_rewards = torch.from_numpy(memories_sum_rewards).float().to(device)
+        if args.sum_rewards: 
+            memories_sum_rewards = torch.from_numpy(memories_sum_rewards).float().to(device)
         print(f'Finding memories took {time.time() - t0} seconds')
 
         # update train paths
@@ -139,7 +145,8 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             new_path['mem_actions'] = memories_actions[nearest_memories].cpu().numpy()
             new_path['mem_next_observations'] = memories_next_obs[nearest_memories].cpu().numpy()
             new_path['mem_rewards'] = memories_rewards[nearest_memories].cpu().numpy()
-            #new_path['mem_sum_rewards'] = memories_sum_rewards[nearest_memories].cpu().numpy()
+            if args.sum_rewards:
+                new_path['mem_sum_rewards'] = memories_sum_rewards[nearest_memories].cpu().numpy()
 
 
             updated_train_paths.append(new_path)
@@ -151,8 +158,12 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             'memories_act': memories_actions.cpu().numpy(), 
             'memories_next_obs': memories_next_obs.cpu().numpy(),
             'memories_rewards': memories_rewards.cpu().numpy(),
-            #'memories_sum_rewards': memories_sum_rewards.cpu().numpy(),
             }
+        
+        if args.sum_rewards:
+            data.update({'memories_sum_rewards': memories_sum_rewards.cpu().numpy()})
+            print(f"Saving sum_rewards: {len(memories_sum_rewards.cpu().numpy())}")
+            print(data.keys())
         with open(save_name, 'wb') as f:
             pickle.dump(data, f)
     else:

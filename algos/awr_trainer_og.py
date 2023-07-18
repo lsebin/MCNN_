@@ -3,12 +3,14 @@ import random
 from collections import deque
 
 import gym
+import d4rl
 import numpy as np
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from offlinerlkit.buffer import ReplayBuffer
 from torch.multiprocessing import Process
+from offlinerlkit.utils.scaler import StandardScaler
 from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc_awr
 
 from offlinerlkit.nets.awr_model_og import *
@@ -16,7 +18,7 @@ from offlinerlkit.nets.awr_model_og import *
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--algo-name", type=str, default="awr", choices=["awr", "mem_awr"])
-    parser.add_argument("--task", type=str, default="hopper-expert-v2")
+    parser.add_argument("--task", type=str, default='antmaze-umaze-v0')
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--actor-lr", type=float, default=3e-4)
     parser.add_argument("--critic-lr", type=float, default=3e-4)
@@ -33,9 +35,9 @@ def get_args():
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     
-    parser.add_argument('--chosen-percentage', type=float, default=0.1, choices=[0.1, 0.2, 0.5, 1.0])
+    parser.add_argument('--chosen-percentage', type=float, default=1.0, choices=[0.1, 0.2, 0.5, 1.0])
     parser.add_argument('--num_memories_frac', type=float, default=0.1)
-    parser.add_argument('--Lipz', type=float, default=15.0)
+    parser.add_argument('--Lipz', type=float, default=1.0)
     parser.add_argument('--lamda', type=float, default=1.0)
     parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
 
@@ -104,6 +106,7 @@ class ActorAgent(object):
             Lipz,
             lamda,
             device,
+            scaler,
             lam=0.95,
             use_gae=True,
             use_cuda=False,
@@ -113,7 +116,7 @@ class ActorAgent(object):
             input_size, output_size, action_dim, Lipz, lamda, device,
             use_noisy_net=use_noisy_net, use_continuous=use_continuous)
         self.continuous_agent = use_continuous
-
+        
         self.output_size = output_size
         self.input_size = input_size
         self.gamma = gamma
@@ -124,8 +127,15 @@ class ActorAgent(object):
                                           lr=0.00005, momentum=0.9)
         self.critic_optimizer = optim.SGD(self.model.critic.parameters(),
                                            lr=0.0001, momentum=0.9)
-        self.device = torch.device('cuda' if use_cuda else 'cpu')
+        self.device=device
         self.model = self.model.to(self.device)
+        
+        # dataset["observations"] = self.scaler.transform(dataset["observations"])
+        # dataset["next_observations"] = self.scaler.transform(dataset["next_observations"])
+        # dataset["mem_observations"] = self.scaler.transform(dataset["mem_observations"])
+        # dataset["mem_next_observations"] = self.scaler.transform(dataset["mem_next_observations"])
+        dataset["memories_obs"] = scaler.transform(dataset["memories_obs"])
+        dataset["memories_next_obs"] = scaler.transform(dataset["memories_next_obs"])
         
         self.nodes_obs = torch.from_numpy(dataset["memories_obs"]).float().to(self.device)
         self.nodes_actions = torch.from_numpy(dataset["memories_actions"]).float().to(self.device)
@@ -151,16 +161,15 @@ class ActorAgent(object):
     #     return action
 
     def train_model(self, s_batch, action_batch, reward_batch, n_s_batch, done_batch):
-        s_batch = np.array(s_batch)
-        action_batch = np.array(action_batch)
-        reward_batch = np.array(reward_batch)
-        done_batch = np.array(done_batch)
-
-        data_len = len(s_batch)
+        # s_batch = np.array(s_batch.cpu())
+        # action_batch = np.array(action_batch.cpu())
+        # reward_batch = np.array(reward_batch.cpu())
+        # done_batch = np.array(done_batch.cpu())
+        data_len = len(np.array(s_batch.cpu()))
         mse = nn.MSELoss()
         
         # find closest memory
-        _, closest_nodes = torch.cdist(s_batch, self.nodes_inputs).min(dim=1)
+        _, closest_nodes = torch.cdist(s_batch, self.nodes_obs).min(dim=1)
         mem_state = self.nodes_obs[closest_nodes, :]
         mem_action = self.nodes_actions[closest_nodes, :]
         mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
@@ -168,7 +177,7 @@ class ActorAgent(object):
 
         # update critic
         self.critic_optimizer.zero_grad()
-        cur_values = self.model.critic(s_batch, mem_state, mem_sum_rewards, dist, beta=0)
+        cur_value = self.model.critic(s_batch, mem_sum_rewards, dist,0)
         #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
@@ -179,7 +188,7 @@ class ActorAgent(object):
             # mem_state = self.nodes_obs[closest_nodes, :]
             # mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
             # dist = torch.norm(s_batch[sample_idx] - mem_state, p=2, dim=1).unsqueeze(1)
-            sample_value = self.model.critic(s_batch[sample_idx], mem_state[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
+            sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
             if (torch.sum(torch.isnan(sample_value)) > 0):
                 print('NaN in value prediction')
                 input()
@@ -189,7 +198,7 @@ class ActorAgent(object):
             self.critic_optimizer.zero_grad()
 
         # update actor
-        cur_values = self.model.critic(s_batch, mem_state, mem_sum_rewards, dist, beta=0)
+        cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
         #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
@@ -205,7 +214,7 @@ class ActorAgent(object):
             # mem_state = self.nodes_obs[closest_nodes, :]
             # mem_action = self.nodes_actions[closest_nodes, :]
             # dist = torch.norm(s_batch[sample_idx] - mem_state, p=2, dim=1).unsqueeze(1)
-            cur_policy = self.model.actor(s_batch[sample_idx], mem_state[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
+            cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
 
             if self.continuous_agent:
                 probs = -cur_policy.log_probs(torch.tensor(action_batch[sample_idx]).float())
@@ -245,12 +254,8 @@ def discount_return(reward, done, value):
 
 if __name__ == '__main__':
     args = get_args()
-    # env_id = 'CartPole-v1'
-    # env_id = 'Pendulum-v0'
-    # env_id = 'LunarLanderContinuous-v2'
-    # env_id = 'Acrobot-v1'
-    # env_id = 'BipedalWalker-v2'
-
+    
+    print(args.task)
     env = gym.make(args.task)
 
     continuous = isinstance(env.action_space, gym.spaces.Box)
@@ -269,7 +274,7 @@ if __name__ == '__main__':
         
     buffer = ReplayBuffer(
         buffer_size=len(dataset["observations"]),
-        obs_shape=args.obs_shape,
+        obs_shape=env.observation_space.shape,
         obs_dtype=np.float32,
         action_dim=args.action_dim,
         action_dtype=np.float32,
@@ -277,10 +282,11 @@ if __name__ == '__main__':
     )
     buffer.load_dataset(dataset)
     obs_mean, obs_std = buffer.normalize_obs()
+    scaler = StandardScaler(mu=obs_mean, std=obs_std)
+    # normalize where?? -> buffer is already normalized here but dataset isn't normalized
 
     use_cuda = False
     use_noisy_net = False
-    batch_size = 256
     num_sample = 2048
     critic_update_iter = 500
     actor_update_iter = 1000
@@ -302,6 +308,7 @@ if __name__ == '__main__':
         args.Lipz,
         args.lamda,
         args.device,
+        scaler,
         use_gae=use_gae,
         use_cuda=use_cuda,
         use_noisy_net=use_noisy_net,
@@ -350,4 +357,5 @@ if __name__ == '__main__':
         #         if step > num_sample:
         #             step = 0
         #             # train
+
         agent.train_model(states, actions, rewards, next_states, dones)

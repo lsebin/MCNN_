@@ -126,21 +126,43 @@ class BaseActorCriticNetwork(nn.Module):
         #     nn.ReLU()
         # )
         
-        actor_backbone = nn.Sequential(
-            linear(input_size, 128),
-            nn.ReLU(),
-            linear(128, 64),
-            nn.ReLU(),
-            GuaussianAction(64, output_size) if use_continuous else linear(64, output_size)
-        )
+        class backbone(nn.Module):
+            def __init__(
+                self, 
+                output_dim: int, 
+                continuous: bool) -> None:
+                super().__init__()
+                self.output_dim=output_dim
+                self.fc = nn.Sequential(
+                    linear(input_size, 128),
+                    nn.ReLU(),
+                    linear(128, 64),
+                    nn.ReLU(),
+                    GuaussianAction(64, output_dim) if continuous else linear(64, output_dim)
+                )
+                
+            def forward(self, x):
+                x = self.fc(x)
+                return x
+                
+        actor_backbone=backbone(output_dim=output_size, continuous=use_continuous)
+        critic_backbone=backbone(output_dim=1, continuous=False)
+                
+        # actor_backbone = nn.Sequential(
+        #     linear(input_size, 128),
+        #     nn.ReLU(),
+        #     linear(128, 64),
+        #     nn.ReLU(),
+        #     GuaussianAction(64, output_size) if use_continuous else linear(64, output_size)
+        # )
         
-        critic_backbone = nn.Sequential(
-            linear(input_size, 128),
-            nn.ReLU(),
-            linear(128, 64),
-            nn.ReLU(),
-            linear(64, 1)
-        )
+        # critic_backbone = nn.Sequential(
+        #     linear(input_size, 128),
+        #     nn.ReLU(),
+        #     linear(128, 64),
+        #     nn.ReLU(),
+        #     linear(64, 1)
+        # )
         
         self.actor = MemActor(actor_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)
         self.critic = MemActor(critic_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)

@@ -49,12 +49,13 @@ def qlearning_dataset_percentbc(task, chosen_percentage, num_memories_frac):
     
 def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, is_awr):
     
-    full_name = f'mems_obs/updated_datasets_re/{task}-{chosen_percentage}/updated_{num_memories_frac}_frac.pkl'
+    full_name = f'mems_obs/updated_datasets/{task}-{chosen_percentage}/updated_{num_memories_frac}_frac.pkl'
     with open(full_name, 'rb') as f:
             data = pickle.load(f)
 
     train_paths, memories_obs, memories_act, memories_next_obs, memories_rewards = data['train_paths'], data['memories_obs'], data['memories_act'], data['memories_next_obs'], data['memories_rewards']
-
+    print(data.keys())
+    
     choice = 'embeddings' if 'carla' in task else 'observations'
 
     obs_dim = train_paths[0][choice].shape[1]
@@ -94,7 +95,7 @@ def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, 
     if is_awr:
         dataset.update({'sum_rewards': np.concatenate([path['sum_rewards'] for path in train_paths], axis=0),
                         'mem_sum_rewards' : np.concatenate([path['mem_sum_rewards'] for path in train_paths], axis=0),
-                        'memories_sum_rewards': dataset["memories_sum_rewards"], })
+                        'memories_sum_rewards': data['memories_sum_rewards']})
     
     return dataset
   
