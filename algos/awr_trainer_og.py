@@ -67,12 +67,6 @@ class RLEnv(Process):
 
         obs, reward, done, info = self.env.step(action)
 
-        # try: 
-        # obs, reward, done, info = self.env.step(action)
-        # except: 
-        #     input(action)
-        #     obs, reward, done, info = self.env.step(action)
-
         self.rall += reward
         self.steps += 1
 
@@ -131,10 +125,6 @@ class ActorAgent(object):
         self.device=device
         self.model = self.model.to(self.device)
         
-        # dataset["observations"] = self.scaler.transform(dataset["observations"])
-        # dataset["next_observations"] = self.scaler.transform(dataset["next_observations"])
-        # dataset["mem_observations"] = self.scaler.transform(dataset["mem_observations"])
-        # dataset["mem_next_observations"] = self.scaler.transform(dataset["mem_next_observations"])
         dataset["memories_obs"] = scaler.transform(dataset["memories_obs"])
         dataset["memories_next_obs"] = scaler.transform(dataset["memories_next_obs"])
         
@@ -144,28 +134,8 @@ class ActorAgent(object):
         self.nodes_rewards = torch.from_numpy(dataset["memories_rewards"]).float().to(self.device).unsqueeze(1)
         self.nodes_sum_rewards = torch.from_numpy(dataset["memories_sum_rewards"]).float().to(self.device).unsqueeze(1)
         
-        
-    # def get_action(self, state):
-    #     # state = torch.Tensor(state).to(self.device).reshape(1,-1)
-    #     # state = state.float()
-    #     state = torch.tensor(state).float().reshape(1, -1)
-        
-    #     # need to also give memory and memory target
-    #     policy, value = self.model(state, mem_state, mem_action, mem_sum_rewards)
-
-    #     if self.continuous_agent:
-    #         action = policy.sample().numpy().reshape(-1)
-    #     else:
-    #         policy = F.softmax(policy, dim=-1).data.cpu().numpy()
-    #         action = np.random.choice(np.arange(self.output_size), p=policy[0])
-
-    #     return action
 
     def train_model(self, s_batch, action_batch, reward_batch, n_s_batch, done_batch):
-        # s_batch = np.array(s_batch.cpu())
-        # action_batch = np.array(action_batch.cpu())
-        # reward_batch = np.array(reward_batch.cpu())
-        # done_batch = np.array(done_batch.cpu())
         data_len = len(np.array(s_batch.cpu()))
         mse = nn.MSELoss()
         
@@ -186,10 +156,8 @@ class ActorAgent(object):
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
         print(f'cur_value:{cur_value.shape}')
-        #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        #discounted_reward, _ = discount_return(reward_batch.cpu().detach().numpy(), done_batch.cpu().detach().numpy(), cur_value.cpu().detach().numpy())
         # discounted_reward = (discounted_reward - discounted_reward.mean())/(discounted_reward.std() + 1e-8)
         for _ in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), 256)
@@ -204,28 +172,23 @@ class ActorAgent(object):
 
         # update actor
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
-        #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        #discounted_reward, adv = discount_return(reward_batch.cpu().detach().numpy(), done_batch.cpu().detach().numpy(), cur_value.cpu().detach().numpy())
         print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
         print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         self.actor_optimizer.zero_grad()
-        for a in range(actor_update_iter):
+        for _ in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
             #print(s_batch[sample_idx].type, mem_action[sample_idx].type, dist[sample_idx].type)
-            #cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
-            # if self.continuous_agent:
-            #     probs = -cur_policy.log_probs(torch.tensor(action_batch[sample_idx]).float())
-            #     actor_loss = probs * weight
-            #  else:
-            m = Categorical(F.softmax(cur_policy, dim=-1))
-            actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
-
-            actor_loss = actor_loss.mean()
+            if self.continuous_agent:
+                actor_loss = mse(cur_policy.squeeze(), torch.FloatTensor(action_batch[sample_idx]).to(args.device))
+            else:
+                m = Categorical(F.softmax(cur_policy[:, :, None], dim=-1))
+                actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
+                actor_loss = actor_loss.mean()
             # print(actor_loss)
 
             actor_loss.backward()
