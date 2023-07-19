@@ -103,6 +103,7 @@ class ActorAgent(object):
             gamma,
             dataset,
             action_dim,
+            rewards_dim,
             Lipz,
             lamda,
             device,
@@ -113,7 +114,7 @@ class ActorAgent(object):
             use_noisy_net=False,
             use_continuous=False):
         self.model = BaseActorCriticNetwork(
-            input_size, output_size, action_dim, Lipz, lamda, device,
+            input_size, output_size, action_dim, rewards_dim, Lipz, lamda, device,
             use_noisy_net=use_noisy_net, use_continuous=use_continuous)
         self.continuous_agent = use_continuous
         
@@ -174,25 +175,29 @@ class ActorAgent(object):
         mem_action = self.nodes_actions[closest_nodes, :]
         mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
         dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
-
-        # update critic
+        print(f's_batch:{s_batch.shape}, mem_state={mem_state.shape}, mem_Action={mem_action.shape}, mem_sum_rewards={mem_sum_rewards.shape}, dist={dist.shape}')
+        
+        s_batch = np.array(s_batch.cpu())
+        action_batch = np.array(action_batch.cpu())
+        reward_batch = np.array(reward_batch.cpu())
+        done_batch = np.array(done_batch.cpu())
+        
+        #update critic
         self.critic_optimizer.zero_grad()
-        cur_value = self.model.critic(s_batch, mem_sum_rewards, dist,0)
+        cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
+        print(f'cur_value:{cur_value.shape}')
         #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
+        #discounted_reward, _ = discount_return(reward_batch.cpu().detach().numpy(), done_batch.cpu().detach().numpy(), cur_value.cpu().detach().numpy())
         # discounted_reward = (discounted_reward - discounted_reward.mean())/(discounted_reward.std() + 1e-8)
         for _ in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), 256)
-            # _, closest_nodes = torch.cdist(s_batch[sample_idx], self.nodes_inputs).min(dim=1)
-            # mem_state = self.nodes_obs[closest_nodes, :]
-            # mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
-            # dist = torch.norm(s_batch[sample_idx] - mem_state, p=2, dim=1).unsqueeze(1)
             sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
             if (torch.sum(torch.isnan(sample_value)) > 0):
                 print('NaN in value prediction')
                 input()
-            critic_loss = mse(sample_value.squeeze(), torch.FloatTensor(discounted_reward[sample_idx]))
+            critic_loss = mse(sample_value.squeeze(), torch.FloatTensor(discounted_reward[sample_idx]).to(args.device))
             critic_loss.backward()
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
@@ -202,26 +207,23 @@ class ActorAgent(object):
         #cur_value = self.model.critic(torch.FloatTensor(s_batch))
         print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
+        #discounted_reward, adv = discount_return(reward_batch.cpu().detach().numpy(), done_batch.cpu().detach().numpy(), cur_value.cpu().detach().numpy())
         print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
         print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         self.actor_optimizer.zero_grad()
-        for _ in range(actor_update_iter):
+        for a in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
-            # cur_policy = self.model.actor(torch.FloatTensor(s_batch[sample_idx]))
-            #  _, closest_nodes = torch.cdist(s_batch[sample_idx], self.nodes_inputs).min(dim=1)
-            # mem_state = self.nodes_obs[closest_nodes, :]
-            # mem_action = self.nodes_actions[closest_nodes, :]
-            # dist = torch.norm(s_batch[sample_idx] - mem_state, p=2, dim=1).unsqueeze(1)
+            #print(s_batch[sample_idx].type, mem_action[sample_idx].type, dist[sample_idx].type)
+            #cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
-
-            if self.continuous_agent:
-                probs = -cur_policy.log_probs(torch.tensor(action_batch[sample_idx]).float())
-                actor_loss = probs * weight
-            else:
-                m = Categorical(F.softmax(cur_policy, dim=-1))
-                actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
+            # if self.continuous_agent:
+            #     probs = -cur_policy.log_probs(torch.tensor(action_batch[sample_idx]).float())
+            #     actor_loss = probs * weight
+            #  else:
+            m = Categorical(F.softmax(cur_policy, dim=-1))
+            actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
 
             actor_loss = actor_loss.mean()
             # print(actor_loss)
@@ -239,10 +241,12 @@ def discount_return(reward, done, value):
     discounted_return = np.zeros([num_step])
     gae = 0
     for t in range(num_step - 1, -1, -1):
-        if done[t]:
+        if done[t] or t == num_step - 1:
+        #if done[t]:
             delta = reward[t] - value[t]
         else:
             delta = reward[t] + gamma * value[t + 1] - value[t]
+        #print(reward[t], value[t], delta, gamma, done[t], lam, gae)
         gae = delta + gamma * lam * (1 - done[t]) * gae
 
         discounted_return[t] = gae + value[t]
@@ -262,6 +266,7 @@ if __name__ == '__main__':
     print('Env is continuous: {}'.format(continuous))
     
     args.action_dim = np.prod(env.action_space.shape)
+    rewards_dim = 1
 
     input_size = env.observation_space.shape[0]  # 4
     output_size = env.action_space.shape[0] if continuous else env.action_space.n  # 2
@@ -283,6 +288,7 @@ if __name__ == '__main__':
     buffer.load_dataset(dataset)
     obs_mean, obs_std = buffer.normalize_obs()
     scaler = StandardScaler(mu=obs_mean, std=obs_std)
+    
     # normalize where?? -> buffer is already normalized here but dataset isn't normalized
 
     use_cuda = False
@@ -305,6 +311,7 @@ if __name__ == '__main__':
         args.gamma,
         dataset,
         args.action_dim,
+        rewards_dim,
         args.Lipz,
         args.lamda,
         args.device,
@@ -314,48 +321,10 @@ if __name__ == '__main__':
         use_noisy_net=use_noisy_net,
         use_continuous=continuous,
         )
-    is_render = False
-
-    #env = RLEnv(env_id, is_render)
-    #env = RLEnv(args.task, is_render)
-    
-    # states, actions, rewards, next_states, dones = deque(maxlen=max_replay), deque(maxlen=max_replay), deque(
-    #     maxlen=max_replay), deque(maxlen=max_replay), deque(maxlen=max_replay)
 
     last_done_index = -1
 
     for i in range(iteration):
         batch = buffer.sample(args.batch_size)
         states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'], batch["terminals"]
-        # Online RL part here
-        # done = False
-        # score = 0
-
-        # step = 0
-        # episode = 0
-        # state = env.reset()
-
-        # while True:
-        #     step += 1
-        #     action = agent.get_action(state)
-        #     if (torch.sum(torch.isnan(torch.tensor(action).float()))):
-        #         print(action)
-        #         action = np.zeros_like(action)
-        #     next_state, reward, done, info = env.step(action)
-        #     states.append(np.array(state))
-        #     actions.append(action)
-        #     rewards.append(reward)
-        #     next_states.append(np.array(next_state))
-        #     dones.append(done)
-
-        #     state = next_state[:]
-
-        #     if done:
-        #         episode += 1
-
-        #         state = env.reset()
-        #         if step > num_sample:
-        #             step = 0
-        #             # train
-
         agent.train_model(states, actions, rewards, next_states, dones)

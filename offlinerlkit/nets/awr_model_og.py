@@ -110,7 +110,7 @@ class Flatten(nn.Module):
 
 
 class BaseActorCriticNetwork(nn.Module):
-    def __init__(self, input_size, output_size, action_dim, Lipz, lamda, device, use_noisy_net=False, use_continuous=False):
+    def __init__(self, input_size, output_size, action_dim, rewards_dim, Lipz, lamda, device, use_noisy_net=False, use_continuous=False):
         super(BaseActorCriticNetwork, self).__init__()
         if use_noisy_net:
             linear = NoisyLinear
@@ -138,15 +138,17 @@ class BaseActorCriticNetwork(nn.Module):
                     nn.ReLU(),
                     linear(128, 64),
                     nn.ReLU(),
-                    GuaussianAction(64, output_dim) if continuous else linear(64, output_dim)
+                    #GuaussianAction(64, self.output_dim) if continuous else
+                    linear(64, self.output_dim)
                 )
                 
             def forward(self, x):
                 x = self.fc(x)
                 return x
-                
-        actor_backbone=backbone(output_dim=output_size, continuous=use_continuous)
-        critic_backbone=backbone(output_dim=1, continuous=False)
+        
+        
+        actor_backbone=backbone(output_dim=action_dim, continuous=self.use_continuous)
+        critic_backbone=backbone(output_dim=rewards_dim, continuous=False)
                 
         # actor_backbone = nn.Sequential(
         #     linear(input_size, 128),
@@ -165,7 +167,7 @@ class BaseActorCriticNetwork(nn.Module):
         # )
         
         self.actor = MemActor(actor_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)
-        self.critic = MemActor(critic_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)
+        self.critic = MemActor(critic_backbone, rewards_dim, device=device, Lipz=Lipz, lamda=lamda)
 
         for p in self.modules():
             if isinstance(p, nn.Conv2d):
