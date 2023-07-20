@@ -1,23 +1,24 @@
 import argparse
 import random
 from collections import deque
-
+import time
 import gym
 import d4rl
 import numpy as np
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
+
 from offlinerlkit.buffer import ReplayBuffer
 from torch.multiprocessing import Process
 from offlinerlkit.utils.scaler import StandardScaler
 from offlinerlkit.utils.load_dataset import qlearning_dataset_percentbc_awr
-
+from offlinerlkit.utils.logger import Logger, make_log_dirs_origin
 from offlinerlkit.nets.awr_model_og import *
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo-name", type=str, default="awr", choices=["awr", "mem_awr"])
+    parser.add_argument("--algo-name", type=str, default="mem_awr", choices=["awr", "mem_awr"])
     parser.add_argument("--task", type=str, default='antmaze-umaze-v0')
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--actor-lr", type=float, default=3e-4)
@@ -136,6 +137,8 @@ class ActorAgent(object):
         
 
     def train_model(self, s_batch, action_batch, reward_batch, n_s_batch, done_batch):
+        self.model.train()
+        
         data_len = len(np.array(s_batch.cpu()))
         mse = nn.MSELoss()
         
@@ -145,7 +148,7 @@ class ActorAgent(object):
         mem_action = self.nodes_actions[closest_nodes, :]
         mem_sum_rewards = self.nodes_sum_rewards[closest_nodes, :]
         dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
-        print(f's_batch:{s_batch.shape}, mem_state={mem_state.shape}, mem_Action={mem_action.shape}, mem_sum_rewards={mem_sum_rewards.shape}, dist={dist.shape}')
+        #print(f's_batch:{s_batch.shape}, mem_state={mem_state.shape}, mem_Action={mem_action.shape}, mem_sum_rewards={mem_sum_rewards.shape}, dist={dist.shape}')
         
         s_batch = np.array(s_batch.cpu())
         action_batch = np.array(action_batch.cpu())
@@ -155,8 +158,7 @@ class ActorAgent(object):
         #update critic
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
-        print(f'cur_value:{cur_value.shape}')
-        print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
+        # print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
         # discounted_reward = (discounted_reward - discounted_reward.mean())/(discounted_reward.std() + 1e-8)
         for _ in range(critic_update_iter):
@@ -172,10 +174,10 @@ class ActorAgent(object):
 
         # update actor
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
-        print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
+        # print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
-        print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
+        # print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
+        # print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         self.actor_optimizer.zero_grad()
         for _ in range(actor_update_iter):
@@ -189,14 +191,51 @@ class ActorAgent(object):
                 m = Categorical(F.softmax(cur_policy[:, :, None], dim=-1))
                 actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
                 actor_loss = actor_loss.mean()
-            # print(actor_loss)
 
             actor_loss.backward()
             self.actor_optimizer.step()
             self.actor_optimizer.zero_grad()
 
         print('Weight has nan {}'.format(torch.sum(torch.isnan(weight))))
+    
+    def evaluate_model(self, eval_env):
+        self.model.eval()
+        
+        obs = eval_env.reset()
+        scaler.transform(obs)
+        eval_ep_info_buffer = []
+        num_episodes = 0
+        episode_reward, episode_length = 0, 0
+        self.model.actor.eval()
+        while num_episodes < args.eval_episodes:
+            obs=torch.from_numpy(obs[None, :]).float().to(self.device)
+            _, closest_nodes = torch.cdist(obs, self.nodes_obs).min(dim=1)
+            mem_action = self.nodes_actions[closest_nodes, :]
+            dist = torch.norm(obs - self.nodes_obs[closest_nodes, :], p=2, dim=1).unsqueeze(1)
+            action = self.model.actor(obs, mem_action, dist, beta=0)
+            
+            #action = self.model.select_action(obs.reshape(1,-1), deterministic=True)
+            action = action.cpu().detach().numpy()
+            next_obs, reward, terminal, _ = eval_env.step(action.flatten())
+            episode_reward += reward
+            episode_length += 1
 
+            obs = next_obs
+
+            if terminal:
+                eval_ep_info_buffer.append(
+                    {"episode_reward": episode_reward, "episode_length": episode_length}
+                )
+                num_episodes +=1
+                episode_reward, episode_length = 0, 0
+                obs = eval_env.reset()
+        
+        self.model.actor.train()
+        return {
+            "eval/episode_reward": [ep_info["episode_reward"] for ep_info in eval_ep_info_buffer],
+            "eval/episode_length": [ep_info["episode_length"] for ep_info in eval_ep_info_buffer]
+        }
+        
 
 def discount_return(reward, done, value):
     value = value.squeeze()
@@ -286,8 +325,38 @@ if __name__ == '__main__':
         )
 
     last_done_index = -1
+    
+    log_dirs=make_log_dirs_origin(args.task, args.algo_name, args.seed, args.Lipz, args.lamda, vars(args), args.num_memories_frac)
+    output_config = {
+        "consoleout_backup": "stdout",
+        "policy_training_progress": "csv",
+        "tb": "tensorboard"
+    }
+    logger = Logger(log_dirs, output_config)
+    logger.log_hyperparameters(vars(args))
+    
+    last_10_performance = deque(maxlen=10)
+    start_time = time.time()
 
     for i in range(iteration):
         batch = buffer.sample(args.batch_size)
         states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'], batch["terminals"]
+        
         agent.train_model(states, actions, rewards, next_states, dones)
+        eval_info = agent.evaluate_model(env)
+        
+        ep_reward_mean, ep_reward_std = np.mean(eval_info["eval/episode_reward"]), np.std(eval_info["eval/episode_reward"])
+        ep_length_mean, ep_length_std = np.mean(eval_info["eval/episode_length"]), np.std(eval_info["eval/episode_length"])
+        norm_ep_rew_mean = env.get_normalized_score(ep_reward_mean) * 100
+        norm_ep_rew_std = env.get_normalized_score(ep_reward_std) * 100
+        last_10_performance.append(norm_ep_rew_mean)
+        logger.logkv("eval/normalized_episode_reward", norm_ep_rew_mean)
+        logger.logkv("eval/normalized_episode_reward_std", norm_ep_rew_std)
+        logger.logkv("eval/episode_length", ep_length_mean)
+        logger.logkv("eval/episode_length_std", ep_length_std)
+        #logger.set_timestep(num_timesteps)
+        logger.dumpkvs()
+    
+    logger.log("total time: {:.2f}s".format(time.time() - start_time))
+    logger.close()
+    print(f'last_10_performance : {np.mean(last_10_performance)}')
