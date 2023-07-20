@@ -200,21 +200,22 @@ class ActorAgent(object):
     
     def evaluate_model(self, eval_env):
         self.model.eval()
-        
+    
         obs = eval_env.reset()
-        scaler.transform(obs)
         eval_ep_info_buffer = []
         num_episodes = 0
         episode_reward, episode_length = 0, 0
         self.model.actor.eval()
         while num_episodes < args.eval_episodes:
-            obs=torch.from_numpy(obs[None, :]).float().to(self.device)
+            # print(obs)
+            # print("!")
+            obs = scaler.transform(obs)
+            obs = torch.from_numpy(obs).float().to(self.device)
             _, closest_nodes = torch.cdist(obs, self.nodes_obs).min(dim=1)
             mem_action = self.nodes_actions[closest_nodes, :]
             dist = torch.norm(obs - self.nodes_obs[closest_nodes, :], p=2, dim=1).unsqueeze(1)
             action = self.model.actor(obs, mem_action, dist, beta=0)
             
-            #action = self.model.select_action(obs.reshape(1,-1), deterministic=True)
             action = action.cpu().detach().numpy()
             next_obs, reward, terminal, _ = eval_env.step(action.flatten())
             episode_reward += reward
@@ -244,11 +245,9 @@ def discount_return(reward, done, value):
     gae = 0
     for t in range(num_step - 1, -1, -1):
         if done[t] or t == num_step - 1:
-        #if done[t]:
             delta = reward[t] - value[t]
         else:
             delta = reward[t] + gamma * value[t + 1] - value[t]
-        #print(reward[t], value[t], delta, gamma, done[t], lam, gae)
         gae = delta + gamma * lam * (1 - done[t]) * gae
 
         discounted_return[t] = gae + value[t]
@@ -289,9 +288,10 @@ if __name__ == '__main__':
     )
     buffer.load_dataset(dataset)
     obs_mean, obs_std = buffer.normalize_obs()
+    # print(buffer.actions)
+    # exit()
+
     scaler = StandardScaler(mu=obs_mean, std=obs_std)
-    
-    # normalize where?? -> buffer is already normalized here but dataset isn't normalized
 
     use_cuda = False
     use_noisy_net = False
@@ -341,7 +341,7 @@ if __name__ == '__main__':
     for i in range(iteration):
         batch = buffer.sample(args.batch_size)
         states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'], batch["terminals"]
-        
+        #print(states)
         agent.train_model(states, actions, rewards, next_states, dones)
         eval_info = agent.evaluate_model(env)
         
@@ -354,7 +354,7 @@ if __name__ == '__main__':
         logger.logkv("eval/normalized_episode_reward_std", norm_ep_rew_std)
         logger.logkv("eval/episode_length", ep_length_mean)
         logger.logkv("eval/episode_length_std", ep_length_std)
-        #logger.set_timestep(num_timesteps)
+        logger.set_timestep(i)
         logger.dumpkvs()
     
     logger.log("total time: {:.2f}s".format(time.time() - start_time))

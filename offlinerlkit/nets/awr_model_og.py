@@ -129,8 +129,7 @@ class BaseActorCriticNetwork(nn.Module):
         class backbone(nn.Module):
             def __init__(
                 self, 
-                output_dim: int, 
-                continuous: bool) -> None:
+                output_dim: int) -> None:
                 super().__init__()
                 self.output_dim=output_dim
                 self.fc = nn.Sequential(
@@ -138,7 +137,6 @@ class BaseActorCriticNetwork(nn.Module):
                     nn.ReLU(),
                     linear(128, 64),
                     nn.ReLU(),
-                    #GuaussianAction(64, self.output_dim) if continuous else
                     linear(64, self.output_dim)
                 )
                 
@@ -147,8 +145,8 @@ class BaseActorCriticNetwork(nn.Module):
                 return x
         
         
-        actor_backbone=backbone(output_dim=action_dim, continuous=self.use_continuous)
-        critic_backbone=backbone(output_dim=rewards_dim, continuous=False)
+        actor_backbone=backbone(output_dim=action_dim)
+        critic_backbone=backbone(output_dim=rewards_dim)
                 
         # actor_backbone = nn.Sequential(
         #     linear(input_size, 128),

@@ -86,13 +86,8 @@ class MemActor(nn.Module):
         obs = torch.as_tensor(obs, device=self.device, dtype=torch.float32)
         mem_actions = torch.as_tensor(mem_actions, device=self.device, dtype=torch.float32)
         dist = torch.as_tensor(dist, device=self.device, dtype=torch.float32)
-        # print(f'forward_obs:{obs.shape}')
-        # print(f'forward_mem_actions:{mem_actions.shape}')
-        # print(f'forward_dist:{dist.shape}')
         
         logits = self.backbone(obs)
-        # outputs = self._max * torch.tanh(self.last(logits))
-        # print(f'forward_logits:{logits.shape}')
         if not torch.is_tensor(logits):
             print(obs.shape, logits)
             logits = torch.as_tensor(logits, device=self.device, dtype=torch.float32)
@@ -100,7 +95,8 @@ class MemActor(nn.Module):
         lamda_in_exp = self.lamda * 10 
         exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
         actions = mem_actions * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * self._max * self.memory_act(self.last(logits), beta)
-        # print(f'front:{(mem_actions * exp_lamda_dist).shape}')
-        # print(f'back:{(self.memory_act(self.last(logits), beta)).shape}')
-        # print(f'forward_actions:{actions.shape}')
+        # print(mem_actions)
+        # print(self.memory_act(self.last(logits), beta))
+        # print(actions)
+        
         return actions
