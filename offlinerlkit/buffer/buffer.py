@@ -12,7 +12,8 @@ class ReplayBuffer:
         obs_dtype: np.dtype,
         action_dim: int,
         action_dtype: np.dtype,
-        device: str = "cpu"
+        device: str = "cpu",
+        is_awr: bool = False,
     ) -> None:
         self._max_size = buffer_size
         self.obs_shape = obs_shape
@@ -32,6 +33,10 @@ class ReplayBuffer:
         self.mem_next_observations = np.zeros((self._max_size,) + self.obs_shape, dtype=obs_dtype)
         self.mem_actions = np.zeros((self._max_size, self.action_dim), dtype=action_dtype)
         self.mem_rewards = np.zeros((self._max_size, 1), dtype=np.float32)
+        
+        self.is_awr = is_awr
+        if is_awr:
+            self.mem_sum_rewards = np.zeros((self._max_size, 1), dtype=np.float32)
 
         self.device = torch.device(device)
 
@@ -107,6 +112,10 @@ class ReplayBuffer:
         self._ptr = len(observations)
         self._size = len(observations)
         
+        if self.is_awr:
+            mem_sum_rewards = np.array(dataset["mem_sum_rewards"], dtype=np.float32).reshape(-1, 1)
+        
+        
     # For ensemble dynamics -> use the load_datset above since it does not need mem_
     
     
@@ -152,6 +161,29 @@ class ReplayBuffer:
             "mem_next_observations": torch.tensor(self.mem_next_observations[batch_indexes]).to(self.device),
             "mem_rewards": torch.tensor(self.mem_rewards[batch_indexes]).to(self.device),
         }
+        
+    def sample_awr(self, batch_size: int) -> Dict[str, torch.Tensor]:
+
+        batch_indexes = np.random.randint(0, self._size, size=batch_size)
+        
+        sample_dataset = {
+            "observations": torch.tensor(self.observations[batch_indexes]).to(self.device),
+            "actions": torch.tensor(self.actions[batch_indexes]).to(self.device),
+            "next_observations": torch.tensor(self.next_observations[batch_indexes]).to(self.device),
+            "terminals": torch.tensor(self.terminals[batch_indexes]).to(self.device),
+            "rewards": torch.tensor(self.rewards[batch_indexes]).to(self.device),
+            "mem_observations": torch.tensor(self.mem_observations[batch_indexes]).to(self.device),
+            "mem_actions": torch.tensor(self.mem_actions[batch_indexes]).to(self.device),
+            "mem_next_observations": torch.tensor(self.mem_next_observations[batch_indexes]).to(self.device),
+            "mem_rewards": torch.tensor(self.mem_rewards[batch_indexes]).to(self.device),
+        }
+        
+        if self.is_awr:
+            sample_dataset.update({
+                "mem_sum_rewards": torch.tensor(self.mem_sum_rewards[batch_indexes]).to(self.device),
+            })
+            
+        return sample_dataset
     
     def sample_all(self) -> Dict[str, np.ndarray]:
         return {

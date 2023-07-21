@@ -54,7 +54,6 @@ def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, 
             data = pickle.load(f)
 
     train_paths, memories_obs, memories_act, memories_next_obs, memories_rewards = data['train_paths'], data['memories_obs'], data['memories_act'], data['memories_next_obs'], data['memories_rewards']
-    print(data.keys())
     
     choice = 'embeddings' if 'carla' in task else 'observations'
 
@@ -86,16 +85,25 @@ def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, 
         'mem_actions': mem_actions,
         'mem_next_observations': mem_next_observations,
         'mem_rewards': mem_rewards,
-        'memories_obs': memories_obs,
-        'memories_actions': memories_act,
-        'memories_next_obs': memories_next_obs,
-        'memories_rewards': memories_rewards,
     }
     
     if is_awr:
-        dataset.update({'sum_rewards': np.concatenate([path['sum_rewards'] for path in train_paths], axis=0),
-                        'mem_sum_rewards' : np.concatenate([path['mem_sum_rewards'] for path in train_paths], axis=0),
-                        'memories_sum_rewards': data['memories_sum_rewards']})
+        sum_rewards = np.concatenate([path['sum_rewards'] for path in train_paths], axis=0)
+        mem_sum_rewards = np.concatenate([path['mem_sum_rewards'] for path in train_paths], axis=0)
+        
+        mean_sum_rewards = np.mean(sum_rewards)
+        abs_max_sum_rewards = np.abs(np.max(sum_rewards))
+        print(f'mean_sum_rewards:{mean_sum_rewards}')
+        print(f'abs_max_sum_rewards:{abs_max_sum_rewards}')
+        sum_rewards = (sum_rewards - mean_sum_rewards) / abs_max_sum_rewards
+        mem_sum_rewards = (mem_sum_rewards - mean_sum_rewards) / abs_max_sum_rewards
+        dataset.update({'sum_rewards': sum_rewards,
+                        'mem_sum_rewards' : mem_sum_rewards,
+                        'mean_sum_rewards' : mean_sum_rewards,
+                        'abs_max_sum_rewards' : abs_max_sum_rewards,
+                        })
+        
+    print(dataset.keys())
     
     return dataset
   

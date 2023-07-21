@@ -23,29 +23,33 @@ def download(name):
 
 	episode_step = 0
 	total_sum_rewards = []
+	total_sum = 0
 	for i in range(N):
-		total_sum=0
 		done_bool = bool(dataset['terminals'][i])
 		if use_timeouts:
 			final_timestep = dataset['timeouts'][i]
 		else:
 			final_timestep = (episode_step == 1000-1)
-   
-		if not (bool(dataset['terminals'][i]) or (dataset['timeouts'][i] if use_timeouts else (episode_step == 1000-1))):
-			total_sum += dataset['rewards']
-			episode_step += 1
-		else:
+
+		if done_bool or final_timestep:
+			total_sum += dataset['rewards'][i]
+			# print(total_sum, len(total_sum_rewards))
 			total_sum_rewards.append(total_sum)
 			total_sum = 0
 			episode_step = 0
+		else:
+			total_sum += dataset['rewards'][i]
+			episode_step += 1
+			
+	total_sum_rewards.append(total_sum)
 	
-	print(f"Saved sums and episode num :{len(total_sum_rewards)}")
+	print(f"Saved sums and episode num: {len(total_sum_rewards)}")
  
 	episode_step = 0
 	paths = []
+	sum_until = 0
+	episode_num = 0
 	for i in range(N):
-		episode_num = 0
-		sum_until = 0
 		done_bool = bool(dataset['terminals'][i])
 		if use_timeouts:
 			final_timestep = dataset['timeouts'][i]
@@ -54,18 +58,21 @@ def download(name):
 
 		for k in ['observations', 'next_observations', 'actions', 'rewards' ,'terminals']:
 			data_[k].append(dataset[k][i])
-			data_['sum_rewards'].append(total_sum_rewards[episode_num]-sum_until)
-			sum_until += dataset['rewards'][i]
+		data_['sum_rewards'].append(total_sum_rewards[episode_num]-sum_until)
+		sum_until += dataset['rewards'][i]
 		if done_bool or final_timestep:
 			episode_step = 0
 			episode_data = {}
+			# print(total_sum_rewards[episode_num]-sum_until)
 			for k in data_:
 				episode_data[k] = np.array(data_[k])
 			paths.append(episode_data)
 			data_ = collections.defaultdict(list)
 			episode_num += 1
+			sum_until = 0
 		else:
 			episode_step += 1
+	print(episode_num)
 
 	returns = np.array([np.sum(p['rewards']) for p in paths])
 	num_samples = np.sum([p['rewards'].shape[0] for p in paths])
@@ -102,11 +109,12 @@ for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expe
    
 for env_name in ['antmaze-umaze']:#['antmaze-umaze', 'antmaze-medium', 'antmaze-large']
 	if env_name == 'antmaze-umaze':
-		for dataset_type in ['-diverse', '']:
+		for dataset_type in ['', '-diverse', '']:
 			name = f'{env_name}{dataset_type}-v0'
 			download(name)
+			exit()
 	else :
-		for dataset_type in ['diverse', 'play']:
+		for dataset_type in ['diverse']:
 			name = f'{env_name}-{dataset_type}-v0'
 			download(name)
 
