@@ -18,7 +18,7 @@ from offlinerlkit.nets.awr_model_og import *
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo-name", type=str, default="mem_awr", choices=["awr", "mem_awr"])
+    parser.add_argument("--algo-name", type=str, default="awr", choices=["awr", "mem_awr"])
     parser.add_argument("--task", type=str, default='antmaze-umaze-v0')
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--actor-lr", type=float, default=3e-4)
@@ -125,8 +125,7 @@ class ActorAgent(object):
         self.device=device
         self.model = self.model.to(self.device)        
 
-    def train_model(self, s_batch, action_batch, reward_batch, done_batch, abs_max_sum_rewards, mean_sum_rewards) :
-        #self.model.train()
+    def train_model(self, s_batch, action_batch, reward_batch, done_batch, mean_sum_rewards, abs_max_sum_rewards) :
         self.model.actor.train()
         self.model.critic.train()
         
@@ -134,18 +133,11 @@ class ActorAgent(object):
         mse_critic = nn.MSELoss()
         mse_actor = nn.MSELoss()
         
-        # s_batch = np.array(s_batch.cpu())
-        # action_batch = np.array(action_batch.cpu())
-        # reward_batch = np.array(reward_batch.cpu())
-        # done_batch = np.array(done_batch.cpu())
-        
         #update critic
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        # print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        # discounted_reward = (discounted_reward - discounted_reward.mean())/(discounted_reward.std() + 1e-8)
         for _ in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             sample_value = self.model.critic(s_batch[sample_idx])
@@ -161,16 +153,12 @@ class ActorAgent(object):
         # update actor
         cur_value = self.model.critic(s_batch)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        # print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        # print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
-        # print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
-        # adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         self.actor_optimizer.zero_grad()
         for _ in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
-            #print(s_batch[sample_idx].type, mem_action[sample_idx].type, dist[sample_idx].type)
+
             cur_policy = self.model.actor(s_batch[sample_idx])
             if self.continuous_agent:
                 actor_loss = mse_actor(cur_policy.squeeze(), torch.tensor(action_batch[sample_idx]).to(args.device))
@@ -266,6 +254,7 @@ if __name__ == '__main__':
         action_dim=args.action_dim,
         action_dtype=np.float32,
         device=args.device
+        is_awr = is_awr
     )
     buffer.load_dataset(dataset)
     obs_mean, obs_std = buffer.normalize_obs()
@@ -320,10 +309,10 @@ if __name__ == '__main__':
     start_time = time.time()
 
     for i in range(iteration):
-        batch = buffer.sample_awr(args.batch_size)
-        states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'], batch["terminals"]
+        batch = buffer.sample(args.batch_size)
+        states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
         
-        agent.train_model(states, actions, rewards, dones, abs_max_sum_rewards, mean_sum_rewards)
+        agent.train_model(states, actions, rewards, dones, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)
         
         ep_reward_mean, ep_reward_std = np.mean(eval_info["eval/episode_reward"]), np.std(eval_info["eval/episode_reward"])

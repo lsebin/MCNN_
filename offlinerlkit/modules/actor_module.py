@@ -95,8 +95,5 @@ class MemActor(nn.Module):
         lamda_in_exp = self.lamda * 10 
         exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
         actions = mem_actions * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * self._max * self.memory_act(self.last(logits), beta)
-        # print(mem_actions)
-        # print(self.memory_act(self.last(logits), beta))
-        # print(actions)
         
         return actions

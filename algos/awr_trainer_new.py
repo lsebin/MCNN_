@@ -125,17 +125,13 @@ class ActorAgent(object):
                                            lr=0.0001, momentum=0.9)
         self.device=device
         self.model = self.model.to(self.device)
-        
-        # dataset["memories_obs"] = scaler.transform(dataset["memories_obs"])
-        # dataset["memories_next_obs"] = scaler.transform(dataset["memories_next_obs"])
-        
+              
         self.nodes_obs = torch.from_numpy(dataset["mem_observations"]).float().to(self.device)
         self.nodes_actions = torch.from_numpy(dataset["mem_actions"]).float().to(self.device)
-        self.nodes_rewards = torch.from_numpy(dataset["mem_rewards"]).float().to(self.device).unsqueeze(1)
         self.nodes_sum_rewards = torch.from_numpy(dataset["mem_sum_rewards"]).float().to(self.device).unsqueeze(1)
         
 
-    def train_model(self, s_batch, action_batch, reward_batch, done_batch, mem_state, mem_action, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards ) :
+    def train_model(self, s_batch, action_batch, reward_batch, done_batch, mem_state, mem_action, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards) :
         self.model.actor.train()
         self.model.critic.train()
         
@@ -144,7 +140,6 @@ class ActorAgent(object):
         mse_actor = nn.MSELoss()
         
         dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
-        #print(f's_batch:{s_batch.shape}, mem_state={mem_state.shape}, mem_Action={mem_action.shape}, mem_sum_rewards={mem_sum_rewards.shape}, dist={dist.shape}')
         
         s_batch = np.array(s_batch.cpu())
         action_batch = np.array(action_batch.cpu())
@@ -155,9 +150,7 @@ class ActorAgent(object):
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        # print('Before opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        # discounted_reward = (discounted_reward - discounted_reward.mean())/(discounted_reward.std() + 1e-8)
         for _ in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
@@ -173,16 +166,11 @@ class ActorAgent(object):
         # update actor
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        # print('After opt - Value has nan: {}'.format(torch.sum(torch.isnan(cur_value))))
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        # print('Advantage has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(adv).float()))))
-        # print('Returns has nan: {}'.format(torch.sum(torch.isnan(torch.tensor(discounted_reward).float()))))
-        # adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         self.actor_optimizer.zero_grad()
         for _ in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), 256)
             weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
-            #print(s_batch[sample_idx].type, mem_action[sample_idx].type, dist[sample_idx].type)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
             if self.continuous_agent:
                 actor_loss = mse_actor(cur_policy.squeeze(), torch.FloatTensor(action_batch[sample_idx]).to(args.device))
@@ -291,8 +279,6 @@ if __name__ == '__main__':
     obs_mean, obs_std = buffer.normalize_obs()
     mean_sum_rewards = torch.tensor(dataset['mean_sum_rewards']).to(args.device)
     abs_max_sum_rewards = torch.tensor(dataset['abs_max_sum_rewards']).to(args.device)
-    # print(buffer.actions)
-    # exit()
 
     scaler = StandardScaler(mu=obs_mean, std=obs_std)
 
@@ -342,11 +328,9 @@ if __name__ == '__main__':
     start_time = time.time()
 
     for i in range(iteration):
-        batch = buffer.sample_awr(args.batch_size)
-        states, actions, rewards, next_states, dones = batch['observations'], batch['actions'], batch['rewards'], batch['next_observations'], batch["terminals"]
+        batch = buffer.sample(args.batch_size)
+        states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
         mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
-        
-        #print(states)
         
         agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)

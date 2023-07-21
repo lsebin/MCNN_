@@ -249,7 +249,6 @@ class MemDynamics(object):
             logger.logkv("beta", self.beta)
             logger.dumpkvs(exclude=["policy_training_progress"])
             
-            
             if (max_epochs and (epoch >= max_epochs)): 
                 break        
 

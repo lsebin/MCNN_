@@ -118,7 +118,6 @@ class ReplayBuffer:
         
     # For ensemble dynamics -> use the load_datset above since it does not need mem_
     
-    
     def load_dataset_original(self, dataset: Dict[str, np.ndarray]) -> None:
         observations = np.array(dataset["observations"], dtype=self.obs_dtype)
         next_observations = np.array(dataset["next_observations"], dtype=self.obs_dtype)
@@ -145,24 +144,8 @@ class ReplayBuffer:
         self.mem_next_observations = (self.mem_next_observations - mean) / std
         obs_mean, obs_std = mean, std
         return obs_mean, obs_std
-
+        
     def sample(self, batch_size: int) -> Dict[str, torch.Tensor]:
-
-        batch_indexes = np.random.randint(0, self._size, size=batch_size)
-        
-        return {
-            "observations": torch.tensor(self.observations[batch_indexes]).to(self.device),
-            "actions": torch.tensor(self.actions[batch_indexes]).to(self.device),
-            "next_observations": torch.tensor(self.next_observations[batch_indexes]).to(self.device),
-            "terminals": torch.tensor(self.terminals[batch_indexes]).to(self.device),
-            "rewards": torch.tensor(self.rewards[batch_indexes]).to(self.device),
-            "mem_observations": torch.tensor(self.mem_observations[batch_indexes]).to(self.device),
-            "mem_actions": torch.tensor(self.mem_actions[batch_indexes]).to(self.device),
-            "mem_next_observations": torch.tensor(self.mem_next_observations[batch_indexes]).to(self.device),
-            "mem_rewards": torch.tensor(self.mem_rewards[batch_indexes]).to(self.device),
-        }
-        
-    def sample_awr(self, batch_size: int) -> Dict[str, torch.Tensor]:
 
         batch_indexes = np.random.randint(0, self._size, size=batch_size)
         

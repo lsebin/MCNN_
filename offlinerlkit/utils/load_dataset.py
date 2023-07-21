@@ -49,7 +49,10 @@ def qlearning_dataset_percentbc(task, chosen_percentage, num_memories_frac):
     
 def qlearning_dataset_percentbc_awr(task, chosen_percentage, num_memories_frac, is_awr):
     
-    full_name = f'mems_obs/updated_datasets/{task}-{chosen_percentage}/updated_{num_memories_frac}_frac.pkl'
+    if is_awr: 
+        full_name = f'mems_obs/updated_datasets_sum/{task}-{chosen_percentage}/updated_{num_memories_frac}_frac.pkl'
+    else: 
+        full_name = f'mems_obs/updated_datasets/{task}-{chosen_percentage}/updated_{num_memories_frac}_frac.pkl'
     with open(full_name, 'rb') as f:
             data = pickle.load(f)
 
@@ -191,11 +194,10 @@ def qlearning_dataset(env, dataset=None, terminate_on_end=False, **kwargs):
 
 def qlearning_dataset_memories(task, train_size, num_memories_frac):
     
-    full_name = f'mems_obs/updated_datasets_re/{task}-{train_size}/updated_{num_memories_frac}_frac.pkl'
+    full_name = f'mems_obs/updated_datasets/{task}-{train_size}/updated_{num_memories_frac}_frac.pkl'
     with open(full_name, 'rb') as f:
             data = pickle.load(f)
 
-   # train_paths, test_paths, memories_obs, memories_act, memories_next_obs, memories_rewards = data['train_paths'], data['test_paths'], data['memories_obs'], data['memories_act'], data['memories_next_obs'], data['memories_rewards']
     train_paths, memories_obs, memories_act, memories_next_obs, memories_rewards = data['train_paths'], data['memories_obs'], data['memories_act'], data['memories_next_obs'], data['memories_rewards']
 
     obs_dim = train_paths[0]['observations'].shape[1]
@@ -214,20 +216,6 @@ def qlearning_dataset_memories(task, train_size, num_memories_frac):
     mem_actions = np.concatenate([path['mem_actions'] for path in train_paths], axis=0)
     mem_next_observations = np.concatenate([path['mem_next_observations'] for path in train_paths], axis=0)
     mem_rewards = np.concatenate([path['mem_rewards'] for path in train_paths], axis=0)
-    
-    # test_observations = np.concatenate([path['observations'] for path in test_paths], axis=0)
-    # test_actions = np.concatenate([path['actions'] for path in test_paths], axis=0)
-    # test_next_observations = np.concatenate([path['next_observations'] for path in test_paths], axis=0)
-    # test_rewards = np.concatenate([path['rewards'] for path in test_paths], axis=0)
-    
-    # for path in test_paths:
-    #     path['terminals'][-1] = 1.0
-    # test_terminals = np.concatenate([path['terminals'] for path in test_paths], axis=0)
-    
-    # test_mem_observations = np.concatenate([path['mem_observations'] for path in test_paths], axis=0)
-    # test_mem_actions = np.concatenate([path['mem_actions'] for path in test_paths], axis=0)
-    # test_mem_next_observations = np.concatenate([path['mem_next_observations'] for path in test_paths], axis=0)
-    # test_mem_rewards = np.concatenate([path['mem_rewards'] for path in test_paths], axis=0)
 
     return {
         'observations': observations,
@@ -243,15 +231,6 @@ def qlearning_dataset_memories(task, train_size, num_memories_frac):
         'memories_actions': memories_act,
         'memories_next_obs': memories_next_obs,
         'memories_rewards': memories_rewards,
-        # 'test_observations': test_observations,
-        # 'test_actions': test_actions,
-        # 'test_next_observations': test_next_observations,
-        # 'test_rewards': test_rewards,
-        # 'test_terminals': test_terminals,
-        # 'test_mem_observations': test_mem_observations,
-        # 'test_mem_actions': test_mem_actions,
-        # 'test_mem_next_observations': test_mem_next_observations,
-        # 'test_mem_rewards': test_mem_rewards,
     }
 
 

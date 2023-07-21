@@ -61,9 +61,8 @@ class MBPolicyTrainer:
             for it in pbar:
                 if num_timesteps % self._rollout_freq == 0:
                     init_obss = self.real_buffer.sample(self._rollout_batch_size)["observations"].cpu().numpy()
-                    # add imagined next oberservation from rollout(dynamics.step()) + find nearest memory for imagine/real next ob
                     rollout_transitions, rollout_info = self.policy.rollout(init_obss, self._rollout_length)
-                    # don't need fake buffer -> now use only to compute new reward function not to generate fake batches 
+
                     self.fake_buffer.add_batch(**rollout_transitions)
                     self.logger.log(
                         "num rollout transitions: {}, reward mean: {:.4f} raw reward mean: {:.4f} penalty mean: {:.4f} ".\
@@ -116,7 +115,7 @@ class MBPolicyTrainer:
             self.logger.dumpkvs(exclude=["dynamics_training_progress"])
         
             # save checkpoint
-            #torch.save(self.policy.state_dict(), os.path.join(self.logger.checkpoint_dir, "policy.pth"))
+            torch.save(self.policy.state_dict(), os.path.join(self.logger.checkpoint_dir, "policy.pth"))
 
         self.logger.log("total time: {:.2f}s".format(time.time() - start_time))
         torch.save(self.policy.state_dict(), os.path.join(self.logger.model_dir, "policy.pth"))

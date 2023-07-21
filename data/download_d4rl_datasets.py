@@ -6,10 +6,18 @@ import pickle
 
 import d4rl
 import os
+import argparse 
 
 # for more info on d4rl, see https://github.com/Farama-Foundation/D4RL/blob/master/d4rl/infos.py
 
-def download(name):
+
+# hyperparameters
+parser = argparse.ArgumentParser()
+parser.add_argument('--is_awr', default=False, type=bool)
+parser.add_argument('--name', type=str)
+
+
+def download(name, is_awr):
 	print(name)
 	env = gym.make(name)
 	dataset = d4rl.qlearning_dataset(env) # env.get_dataset()
@@ -20,9 +28,35 @@ def download(name):
 	use_timeouts = False
 	if 'timeouts' in dataset:
 		use_timeouts = True
+  
+	if is_awr: 
+		episode_step = 0
+		total_sum_rewards = []
+		total_sum = 0
+		for i in range(N):
+			done_bool = bool(dataset['terminals'][i])
+			if use_timeouts:
+				final_timestep = dataset['timeouts'][i]
+			else:
+				final_timestep = (episode_step == 1000-1)
 
+			if done_bool or final_timestep:
+				total_sum += dataset['rewards'][i]
+				total_sum_rewards.append(total_sum)
+				total_sum = 0
+				episode_step = 0
+			else:
+				total_sum += dataset['rewards'][i]
+				episode_step += 1
+				
+		total_sum_rewards.append(total_sum)
+		
+		print(f"Saved sums and episode num: {len(total_sum_rewards)}")
+ 
 	episode_step = 0
 	paths = []
+	sum_until = 0
+	episode_num = 0
 	for i in range(N):
 		done_bool = bool(dataset['terminals'][i])
 		if use_timeouts:
@@ -30,8 +64,11 @@ def download(name):
 		else:
 			final_timestep = (episode_step == 1000-1)
 
-		for k in ['observations', 'next_observations', 'actions', 'rewards', 'terminals']:
+		for k in ['observations', 'next_observations', 'actions', 'rewards' ,'terminals']:
 			data_[k].append(dataset[k][i])
+		if is_awr :
+			data_['sum_rewards'].append(total_sum_rewards[episode_num]-sum_until)
+			sum_until += dataset['rewards'][i]
 		if done_bool or final_timestep:
 			episode_step = 0
 			episode_data = {}
@@ -39,8 +76,11 @@ def download(name):
 				episode_data[k] = np.array(data_[k])
 			paths.append(episode_data)
 			data_ = collections.defaultdict(list)
+			episode_num += 1
+			sum_until = 0
 		else:
 			episode_step += 1
+	print(episode_num)
 
 	returns = np.array([np.sum(p['rewards']) for p in paths])
 	num_samples = np.sum([p['rewards'].shape[0] for p in paths])
@@ -48,11 +88,25 @@ def download(name):
 	print(f'Number of episodes: {len(returns)}')
 	print(f'Trajectory returns: mean = {np.mean(returns)}, std = {np.std(returns)}, max = {np.max(returns)}, min = {np.min(returns)}')
 
-	with open(f'data/datasets/{name}.pkl', 'wb') as f:
+	with open(f'data/datasets_sum/{name}.pkl', 'wb') as f:
 		pickle.dump(paths, f)
 
 
-os.makedirs('data/datasets', exist_ok=True)
+args = parser.parse_args()
+savepkl = 'data/datasets_sum' if args.is_awr else 'data/datasets'
+os.makedirs(savepkl, exist_ok=True)
+
+for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
+	if env_name == 'antmaze-umaze':
+		for dataset_type in ['', '-diverse', '']:
+			name = f'{env_name}{dataset_type}-v0'
+			download(name, args.is_awr)
+
+	else :
+		for dataset_type in ['diverse']:
+			name = f'{env_name}-{dataset_type}-v0'
+			download(name, args.is_awr)
+
 # for env_name in ['halfcheetah', 'hopper', 'walker2d']:
 #  	for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expert']:
 #  		name = f'{env_name}-{dataset_type}-v2'
@@ -66,23 +120,8 @@ os.makedirs('data/datasets', exist_ok=True)
 # for name in ['carla-lane-v0', 'carla-town-v0', 'carla-town-full-v0']:
 #	download(name)
 
-"""
-for dataset_type in ['random', 'medium', 'medium-replay', 'expert', 'medium-expert', 'random-expert]:
-	name = f'ant-{dataset_type}-v0'
-	download(name)
-"""
 
-# upgrade to numpy = 1.24... and try running it again
 
-for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
-	if env_name == 'antmaze-umaze':
-		for dataset_type in ['-diverse', '']:
-			name = f'{env_name}{dataset_type}-v0'
-			download(name)
-	else :
-		for dataset_type in ['diverse', 'play']:
-			name = f'{env_name}-{dataset_type}-v0'
-			download(name)
 
     	 
 				

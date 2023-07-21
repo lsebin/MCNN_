@@ -37,7 +37,7 @@ args = parser.parse_args()
 print(f'\n\n\n\n')
 
 # setup
-folder = f'mems_obs/updated_datasets' if args.sum_rewards else f'mems_obs/updated_datasets_re'
+folder = f'mems_obs/updated_datasets_sum' if args.sum_rewards else f'mems_obs/updated_datasets'
 os.makedirs(folder, exist_ok=True)
 
 datafolder = 'datasets_sum' if args.sum_rewards else 'datasets'
@@ -147,7 +147,6 @@ for chosen_percentage in [1.0]: # 0.1, 0.2, 0.5, 1.0
             new_path['mem_rewards'] = memories_rewards[nearest_memories].cpu().numpy()
             if args.sum_rewards:
                 new_path['mem_sum_rewards'] = memories_sum_rewards[nearest_memories].cpu().numpy()
-
 
             updated_train_paths.append(new_path)
         print(f'Updating train paths took {time.time() - t0} seconds')
