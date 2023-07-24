@@ -96,7 +96,7 @@ class ActorAgent(object):
             input_size,
             output_size,
             gamma,
-            dataset,
+            buffer,
             action_dim,
             rewards_dim,
             Lipz,
@@ -120,6 +120,7 @@ class ActorAgent(object):
         self.lam = lam
         self.use_gae = use_gae
         self.batch_size = batch_size
+        self.buffer = buffer
 
         self.actor_optimizer = optim.SGD(self.model.actor.parameters(),
                                           lr=0.00005, momentum=0.9)
@@ -133,7 +134,7 @@ class ActorAgent(object):
         self.nodes_sum_rewards = torch.from_numpy(dataset["mem_sum_rewards"]).float().to(self.device).unsqueeze(1)
         
 
-    def train_model(self,s _batch, action_batch, reward_batch, done_batch, mem_state, mem_action, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards) :
+    def train_model(self, s_batch, action_batch, reward_batch, done_batch, mem_state, mem_action, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards) :
         self.model.actor.train()
         self.model.critic.train()
         
@@ -143,11 +144,6 @@ class ActorAgent(object):
         
         dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
         
-        s_batch = np.array(s_batch.cpu())
-        action_batch = np.array(action_batch.cpu())
-        reward_batch = np.array(reward_batch.cpu())
-        done_batch = np.array(done_batch.cpu())
-        
         result={}
         
         #update critic
@@ -155,14 +151,16 @@ class ActorAgent(object):
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
-        for _ in range(critic_update_iter):
+        for iter in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
             sample_value = sample_value * abs_max_sum_rewards + mean_sum_rewards
             if (torch.sum(torch.isnan(sample_value)) > 0):
                 print('NaN in value prediction')
                 input()
-            critic_loss = mse_critic(sample_value.squeeze(), torch.FloatTensor(discounted_reward[sample_idx]).to(args.device))
+            
+            critic_loss = mse_critic(sample_value.squeeze(), torch.as_tensor(discounted_reward[sample_idx], device=self.device, dtype=torch.float32))
+            #critic_loss = mse_critic(sample_value.squeeze(), torch.FloatTensor(discounted_reward[sample_idx]).to(args.device))
             critic_loss.backward()
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
@@ -179,10 +177,10 @@ class ActorAgent(object):
         self.actor_optimizer.zero_grad()
         for iter in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
-            weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
+            weight = torch.minimum(torch.exp(adv[sample_idx] / beta), max_weight).reshape(-1, 1)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
             if self.continuous_agent:
-                actor_loss = mse_actor(cur_policy.squeeze(), torch.FloatTensor(action_batch[sample_idx]).to(args.device))
+                actor_loss = mse_actor(cur_policy.squeeze(), torch.as_tensor(action_batch[sample_idx], device=self.device, dtype=torch.float32))
             else:
                 m = Categorical(F.softmax(cur_policy, dim=-1))
                 actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
@@ -199,6 +197,7 @@ class ActorAgent(object):
 
         print('Weight has nan {}'.format(torch.sum(torch.isnan(weight))))
         
+        # maybe change it to mean later
         return result
         
     
@@ -246,9 +245,12 @@ class ActorAgent(object):
 def discount_return(reward, done, value):
     value = value.squeeze()
     num_step = len(value)
-    discounted_return = np.zeros([num_step])
+    value = torch.as_tensor(value, device=args.device, dtype=torch.float32)
+    discounted_return = torch.from_numpy(np.zeros([num_step])).to(args.device)
     gae = 0
+    
     for t in range(num_step - 1, -1, -1):
+        #print(t)
         if done[t] or t == num_step - 1:
             delta = reward[t] - value[t]
         else:
@@ -283,8 +285,10 @@ if __name__ == '__main__':
     if 'antmaze' in args.task:
         dataset["rewards"] -= 1.0
         
+    buffer_size = len(dataset["observations"])
+        
     buffer = ReplayBuffer(
-        buffer_size=len(dataset["observations"]),
+        buffer_size=buffer_size,
         obs_shape=env.observation_space.shape,
         obs_dtype=np.float32,
         action_dim=args.action_dim,
@@ -304,20 +308,21 @@ if __name__ == '__main__':
     num_sample = 2048
     critic_update_iter = 500
     actor_update_iter = 1000
-    iteration = 100000
+    iteration = 2000
     max_replay = 50000
     
     gamma = args.gamma
     lam = 0.95
     beta = 0.05
-    max_weight = 20.0
+    #max_weight = 20.0
+    max_weight = torch.FloatTensor(np.full((args.batch_size, 1), 20.0)).to(args.device)
     use_gae = True
 
     agent = ActorAgent(
         input_size,
         output_size,
         args.gamma,
-        dataset,
+        buffer,
         args.action_dim,
         rewards_dim,
         args.Lipz,
@@ -349,7 +354,6 @@ if __name__ == '__main__':
         batch = buffer.sample(num_sample)
         states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
         mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
-        
         loss = agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)
         
@@ -364,7 +368,7 @@ if __name__ == '__main__':
         logger.logkv("eval/episode_length_std", ep_length_std)
         logger.set_timestep(i)
         for k, v in loss.items():
-            self.logger.logkv_mean(k, v)
+            logger.logkv_mean(k, v)
         logger.dumpkvs()
     
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
