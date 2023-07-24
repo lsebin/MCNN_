@@ -103,6 +103,7 @@ class ActorAgent(object):
             lamda,
             device,
             scaler,
+            batch_size,
             lam=0.95,
             use_gae=True,
             use_cuda=False,
@@ -118,6 +119,7 @@ class ActorAgent(object):
         self.gamma = gamma
         self.lam = lam
         self.use_gae = use_gae
+        self.batch_size = batch_size
 
         self.actor_optimizer = optim.SGD(self.model.actor.parameters(),
                                           lr=0.00005, momentum=0.9)
@@ -131,7 +133,7 @@ class ActorAgent(object):
         self.nodes_sum_rewards = torch.from_numpy(dataset["mem_sum_rewards"]).float().to(self.device).unsqueeze(1)
         
 
-    def train_model(self, s_batch, action_batch, reward_batch, done_batch, mem_state, mem_action, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards) :
+    def train_model(self,s _batch, action_batch, reward_batch, done_batch, mem_state, mem_action, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards) :
         self.model.actor.train()
         self.model.critic.train()
         
@@ -146,13 +148,15 @@ class ActorAgent(object):
         reward_batch = np.array(reward_batch.cpu())
         done_batch = np.array(done_batch.cpu())
         
+        result={}
+        
         #update critic
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
         for _ in range(critic_update_iter):
-            sample_idx = random.sample(range(data_len), 256)
+            sample_idx = random.sample(range(data_len), self.batch_size)
             sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
             sample_value = sample_value * abs_max_sum_rewards + mean_sum_rewards
             if (torch.sum(torch.isnan(sample_value)) > 0):
@@ -162,14 +166,19 @@ class ActorAgent(object):
             critic_loss.backward()
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
+            
+            if iter == critic_update_iter - 1 :
+                result.update({
+                "loss/critic": critic_loss.item(),
+                })
 
         # update actor
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
         self.actor_optimizer.zero_grad()
-        for _ in range(actor_update_iter):
-            sample_idx = random.sample(range(data_len), 256)
+        for iter in range(actor_update_iter):
+            sample_idx = random.sample(range(data_len), self.batch_size)
             weight = torch.tensor(np.minimum(np.exp(adv[sample_idx] / beta), max_weight)).float().reshape(-1, 1)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
             if self.continuous_agent:
@@ -182,8 +191,16 @@ class ActorAgent(object):
             actor_loss.backward()
             self.actor_optimizer.step()
             self.actor_optimizer.zero_grad()
+            
+            if iter == actor_update_iter - 1 :
+                result.update({
+                "loss/actor": actor_loss.item(),
+                })
 
         print('Weight has nan {}'.format(torch.sum(torch.isnan(weight))))
+        
+        return result
+        
     
     def evaluate_model(self, eval_env):
         self.model.actor.eval()
@@ -307,6 +324,7 @@ if __name__ == '__main__':
         args.lamda,
         args.device,
         scaler,
+        args.batch_size,
         use_gae=use_gae,
         use_cuda=use_cuda,
         use_noisy_net=use_noisy_net,
@@ -328,11 +346,11 @@ if __name__ == '__main__':
     start_time = time.time()
 
     for i in range(iteration):
-        batch = buffer.sample(args.batch_size)
+        batch = buffer.sample(num_sample)
         states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
         mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
         
-        agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
+        loss = agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)
         
         ep_reward_mean, ep_reward_std = np.mean(eval_info["eval/episode_reward"]), np.std(eval_info["eval/episode_reward"])
@@ -345,6 +363,8 @@ if __name__ == '__main__':
         logger.logkv("eval/episode_length", ep_length_mean)
         logger.logkv("eval/episode_length_std", ep_length_std)
         logger.set_timestep(i)
+        for k, v in loss.items():
+            self.logger.logkv_mean(k, v)
         logger.dumpkvs()
     
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
