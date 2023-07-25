@@ -167,6 +167,36 @@ class ReplayBuffer:
             })
             
         return sample_dataset
+
+    def sample_paths(self, num_paths: int) -> Dict[str, torch.Tensor]:
+
+        indices_where_paths_end = np.where(self.terminals == 1)[0]
+        indices_where_paths_start = np.concatenate([[0], indices_where_paths_end[:-1] + 1])
+        indices_per_path = [np.arange(s, e+1, 1) for s, e in zip(indices_where_paths_start, indices_where_paths_end)]
+        sampled_paths = np.random.choice(indices_per_path, num_paths, replace=True)
+        sampled_idxs = np.concatenate(sampled_paths)
+        print(sampled_idxs.shape)
+        exit()
+
+        sample_dataset = {
+            "observations": torch.tensor(self.observations[sampled_idxs]).to(self.device),
+            "actions": torch.tensor(self.actions[sampled_idxs]).to(self.device),
+            "next_observations": torch.tensor(self.next_observations[sampled_idxs]).to(self.device),
+            "terminals": torch.tensor(self.terminals[sampled_idxs]).to(self.device),
+            "rewards": torch.tensor(self.rewards[sampled_idxs]).to(self.device),
+            "mem_observations": torch.tensor(self.mem_observations[sampled_idxs]).to(self.device),
+            "mem_actions": torch.tensor(self.mem_actions[sampled_idxs]).to(self.device),
+            "mem_next_observations": torch.tensor(self.mem_next_observations[sampled_idxs]).to(self.device),
+            "mem_rewards": torch.tensor(self.mem_rewards[sampled_idxs]).to(self.device),
+        }
+
+        if self.is_awr:
+            sample_dataset.update({
+                "mem_sum_rewards": torch.tensor(self.mem_sum_rewards[sampled_idxs]).to(self.device),
+            })  
+
+        return sample_dataset
+
     
     def sample_all(self) -> Dict[str, np.ndarray]:
         return {

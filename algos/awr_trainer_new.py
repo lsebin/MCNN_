@@ -138,7 +138,7 @@ class ActorAgent(object):
         self.model.actor.train()
         self.model.critic.train()
         
-        data_len = len(np.array(s_batch.cpu()))
+        data_len = len(s_batch)
         mse_critic = nn.MSELoss()
         mse_actor = nn.MSELoss()
         
@@ -285,10 +285,9 @@ if __name__ == '__main__':
     if 'antmaze' in args.task:
         dataset["rewards"] -= 1.0
         
-    buffer_size = len(dataset["observations"])
         
     buffer = ReplayBuffer(
-        buffer_size=buffer_size,
+        buffer_size=len(dataset["observations"]),
         obs_shape=env.observation_space.shape,
         obs_dtype=np.float32,
         action_dim=args.action_dim,
@@ -346,18 +345,17 @@ if __name__ == '__main__':
     }
     logger = Logger(log_dirs, output_config)
     logger.log_hyperparameters(vars(args))
+
+    num_paths = 50
     
     last_10_performance = deque(maxlen=10)
     start_time = time.time()
-    
-    batch = buffer.sample(buffer_size)
-    states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
-    mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
 
     for i in range(iteration):
-        # batch = buffer.sample(num_sample)
-        # states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
-        # mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
+        batch = buffer.sample_paths(num_paths)
+        states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
+        mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
+
         loss = agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)
         
