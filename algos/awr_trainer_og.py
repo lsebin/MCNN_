@@ -328,10 +328,13 @@ if __name__ == '__main__':
     
     last_10_performance = deque(maxlen=10)
     start_time = time.time()
+    
+    batch = buffer.sample(buffer_size)
+    states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
 
     for i in range(iteration):
-        batch = buffer.sample(num_sample)
-        states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
+        # batch = buffer.sample(num_sample)
+        # states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
         
         loss = agent.train_model(states, actions, rewards, dones, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)

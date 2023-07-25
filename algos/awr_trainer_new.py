@@ -349,11 +349,15 @@ if __name__ == '__main__':
     
     last_10_performance = deque(maxlen=10)
     start_time = time.time()
+    
+    batch = buffer.sample(buffer_size)
+    states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
+    mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
 
     for i in range(iteration):
-        batch = buffer.sample(num_sample)
-        states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
-        mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
+        # batch = buffer.sample(num_sample)
+        # states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
+        # mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
         loss = agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)
         
