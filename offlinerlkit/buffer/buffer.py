@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import random, d4rl, gym
 
 from typing import Optional, Union, Tuple, Dict
 
@@ -169,14 +170,21 @@ class ReplayBuffer:
         return sample_dataset
 
     def sample_paths(self, num_paths: int) -> Dict[str, torch.Tensor]:
-
+        # env = gym.make("antmaze-umaze-v0")
+        # dataset = d4rl.qlearning_dataset(env) 
+        
+        #indices_where_paths_end = np.where(dataset["terminals"] == 1)[0]
         indices_where_paths_end = np.where(self.terminals == 1)[0]
         indices_where_paths_start = np.concatenate([[0], indices_where_paths_end[:-1] + 1])
-        indices_per_path = [np.arange(s, e+1, 1) for s, e in zip(indices_where_paths_start, indices_where_paths_end)]
-        sampled_paths = np.random.choice(indices_per_path, num_paths, replace=True)
+        indices_per_path = [list(range(s, e+1, 1)) for s, e in zip(indices_where_paths_start, indices_where_paths_end)]
+        sampled_paths = random.sample(indices_per_path, num_paths)
         sampled_idxs = np.concatenate(sampled_paths)
-        print(sampled_idxs.shape)
-        exit()
+
+        # print(sampled_idxs.shape)
+        # print([len(item) for item in sampled_paths])
+        # # print([(s,e) for s, e in zip(indices_where_paths_start, indices_where_paths_end)])
+        # #print(sampled_paths)
+        # exit()
 
         sample_dataset = {
             "observations": torch.tensor(self.observations[sampled_idxs]).to(self.device),

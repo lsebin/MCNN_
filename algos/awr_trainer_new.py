@@ -96,7 +96,6 @@ class ActorAgent(object):
             input_size,
             output_size,
             gamma,
-            buffer,
             action_dim,
             rewards_dim,
             Lipz,
@@ -120,7 +119,6 @@ class ActorAgent(object):
         self.lam = lam
         self.use_gae = use_gae
         self.batch_size = batch_size
-        self.buffer = buffer
 
         self.actor_optimizer = optim.SGD(self.model.actor.parameters(),
                                           lr=0.00005, momentum=0.9)
@@ -144,13 +142,16 @@ class ActorAgent(object):
         
         dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
         
+        #print(s_batch.get_device(), action_batch.get_device(), reward_batch.get_device(), done_batch.get_device(), mem_state.get_device(), mem_sum_rewards.get_device(), dist.get_device())
+        
         result={}
         
         #update critic
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
+        discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy()) #
+        critic_start_time = time.time()
         for iter in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
@@ -159,9 +160,8 @@ class ActorAgent(object):
                 print('NaN in value prediction')
                 input()
             
-            critic_loss = mse_critic(sample_value.squeeze(), torch.as_tensor(discounted_reward[sample_idx], device=self.device, dtype=torch.float32))
-            #critic_loss = mse_critic(sample_value.squeeze(), torch.FloatTensor(discounted_reward[sample_idx]).to(args.device))
-            critic_loss.backward()
+            critic_loss = mse_critic(sample_value.squeeze(), torch.as_tensor(discounted_reward[sample_idx], device=self.device, dtype=torch.float32)) #discounted_reward[sample_idx]
+            critic_loss.backward() #retain_graph=True
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
             
@@ -169,18 +169,20 @@ class ActorAgent(object):
                 result.update({
                 "loss/critic": critic_loss.item(),
                 })
+        print("critic time: {:.2f}s".format(time.time() - critic_start_time))
 
         # update actor
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
+        discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value) #.cpu().detach().numpy()
         self.actor_optimizer.zero_grad()
+        actor_start_time = time.time()
         for iter in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             weight = torch.minimum(torch.exp(adv[sample_idx] / beta), max_weight).reshape(-1, 1)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
             if self.continuous_agent:
-                actor_loss = mse_actor(cur_policy.squeeze(), torch.as_tensor(action_batch[sample_idx], device=self.device, dtype=torch.float32))
+                actor_loss = mse_actor(cur_policy.squeeze(), action_batch[sample_idx]) #torch.as_tensor(action_batch[sample_idx], device=self.device, dtype=torch.float32)
             else:
                 m = Categorical(F.softmax(cur_policy, dim=-1))
                 actor_loss = -m.log_prob(torch.LongTensor(action_batch[sample_idx])) * weight.reshape(-1)
@@ -194,6 +196,8 @@ class ActorAgent(object):
                 result.update({
                 "loss/actor": actor_loss.item(),
                 })
+                
+        print("actor time: {:.2f}s".format(time.time() - actor_start_time))
 
         print('Weight has nan {}'.format(torch.sum(torch.isnan(weight))))
         
@@ -209,8 +213,6 @@ class ActorAgent(object):
         num_episodes = 0
         episode_reward, episode_length = 0, 0
         while num_episodes < args.eval_episodes:
-            # print(obs)
-            # print("!")
             unnorm_obs = torch.from_numpy(obs[None, :]).float().to(self.device)
             _, closest_nodes = torch.cdist(unnorm_obs, self.nodes_obs).min(dim=1)
             mem_action = self.nodes_actions[closest_nodes, :]
@@ -246,7 +248,9 @@ def discount_return(reward, done, value):
     value = value.squeeze()
     num_step = len(value)
     value = torch.as_tensor(value, device=args.device, dtype=torch.float32)
-    discounted_return = torch.from_numpy(np.zeros([num_step])).to(args.device)
+    discounted_return = torch.from_numpy(np.zeros([num_step])).to(args.device)	
+    # value = torch.as_tensor(value, device=args.device, dtype=torch.float32)
+    # discounted_return = torch.zeros([num_step], dtype=torch.float32, device = args.device) #.to(args.device)
     gae = 0
     
     for t in range(num_step - 1, -1, -1):
@@ -267,8 +271,17 @@ def discount_return(reward, done, value):
 if __name__ == '__main__':
     args = get_args()
     
+    # seed
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.deterministic = True
+    
     print(args.task)
     env = gym.make(args.task)
+    
+    env.seed(args.seed)
 
     continuous = isinstance(env.action_space, gym.spaces.Box)
     print('Env is continuous: {}'.format(continuous))
@@ -313,7 +326,6 @@ if __name__ == '__main__':
     gamma = args.gamma
     lam = 0.95
     beta = 0.05
-    #max_weight = 20.0
     max_weight = torch.FloatTensor(np.full((args.batch_size, 1), 20.0)).to(args.device)
     use_gae = True
 
@@ -321,7 +333,6 @@ if __name__ == '__main__':
         input_size,
         output_size,
         args.gamma,
-        buffer,
         args.action_dim,
         rewards_dim,
         args.Lipz,
@@ -346,7 +357,7 @@ if __name__ == '__main__':
     logger = Logger(log_dirs, output_config)
     logger.log_hyperparameters(vars(args))
 
-    num_paths = 50
+    num_paths = 256
     
     last_10_performance = deque(maxlen=10)
     start_time = time.time()
@@ -355,6 +366,7 @@ if __name__ == '__main__':
         batch = buffer.sample_paths(num_paths)
         states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
         mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
+        print(f'Epoch {i} num_paths : {len(states)}')
 
         loss = agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)

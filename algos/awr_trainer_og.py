@@ -140,6 +140,7 @@ class ActorAgent(object):
         cur_value = self.model.critic(s_batch)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
         discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
+        critic_start_time = time.time()
         for iter in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             sample_value = self.model.critic(s_batch[sample_idx])
@@ -158,12 +159,14 @@ class ActorAgent(object):
                 result.update({
                 "loss/critic": critic_loss.item(),
                 })
+        print("critic time: {:.2f}s".format(time.time() - critic_start_time))
 
         # update actor
         cur_value = self.model.critic(s_batch)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy())
         self.actor_optimizer.zero_grad()
+        actor_start_time = time.time()
         for iter in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             weight = torch.minimum(torch.exp(adv[sample_idx] / beta), max_weight).reshape(-1, 1)
@@ -183,6 +186,7 @@ class ActorAgent(object):
                 result.update({
                 "loss/actor": actor_loss.item(),
                 })
+        print("actor time: {:.2f}s".format(time.time() - actor_start_time))
 
         print('Weight has nan {}'.format(torch.sum(torch.isnan(weight))))
         
@@ -248,8 +252,17 @@ def discount_return(reward, done, value):
 if __name__ == '__main__':
     args = get_args()
     
+    # seed
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.deterministic = True
+    
     print(args.task)
     env = gym.make(args.task)
+    
+    env.seed(args.seed)
 
     continuous = isinstance(env.action_space, gym.spaces.Box)
     print('Env is continuous: {}'.format(continuous))
@@ -329,12 +342,12 @@ if __name__ == '__main__':
     last_10_performance = deque(maxlen=10)
     start_time = time.time()
     
-    batch = buffer.sample(buffer_size)
-    states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
-
+    num_paths = 256
+        
     for i in range(iteration):
-        # batch = buffer.sample(num_sample)
-        # states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
+        batch = buffer.sample_paths(num_paths)
+        states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'],  batch["terminals"]
+        print(f'Epoch {i} num_paths : {len(states)}')
         
         loss = agent.train_model(states, actions, rewards, dones, mean_sum_rewards, abs_max_sum_rewards)
         eval_info = agent.evaluate_model(env)
