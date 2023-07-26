@@ -66,7 +66,7 @@ def download(name, is_awr):
 
 		for k in ['observations', 'next_observations', 'actions', 'rewards' ,'terminals']:
 			data_[k].append(dataset[k][i])
-		if is_awr :
+		if is_awr:
 			data_['sum_rewards'].append(total_sum_rewards[episode_num]-sum_until)
 			sum_until += dataset['rewards'][i]
 		if done_bool or final_timestep:
