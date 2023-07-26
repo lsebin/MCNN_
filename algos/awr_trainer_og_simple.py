@@ -99,21 +99,18 @@ class ActorAgent(object):
             input_size,
             output_size,
             gamma,
+            buffer,
             action_dim,
-            rewards_dim,
-            Lipz,
-            lamda,
-            device,
             scaler,
             batch_size,
+            device,
             lam=0.95,
             use_gae=True,
             use_cuda=False,
             use_noisy_net=False,
             use_continuous=False):
-        self.model = BaseActorCriticNetwork(
-            input_size, output_size, action_dim, rewards_dim, Lipz, lamda, device,
-            use_noisy_net=use_noisy_net, use_continuous=use_continuous)
+        self.model = BaseActorCriticNetwork_og(
+            input_size, action_dim, use_noisy_net=use_noisy_net, use_continuous=use_continuous)
         self.continuous_agent = use_continuous
         
         self.output_size = output_size
@@ -151,11 +148,9 @@ class ActorAgent(object):
             # get data from batch including discounted rewards, compute dist
             states, actions, rewards = batch['observations'], batch['actions'], batch['rewards']
             discounted_return = batch['sum_rewards']
-            mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
-            dist = torch.norm(states - mem_states, p=2, dim=1).unsqueeze(1)
 
             # forward pass on critic network
-            sample_value = self.model.critic(states, mem_sum_rewards, dist, beta=0)
+            sample_value =  self.model.critic(states)
             sample_value = sample_value * abs_max_sum_rewards + mean_sum_rewards
             
             if (torch.sum(torch.isnan(sample_value)) > 0):
@@ -182,16 +177,14 @@ class ActorAgent(object):
             # get data from batch including discounted rewards, compute dist
             states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
             discounted_return = batch['sum_rewards']
-            mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
-            dist = torch.norm(states - mem_states, p=2, dim=1).unsqueeze(1)
 
             # compute advantage to use as weights for "advantge weighted" regression
-            value = self.model.critic(states, mem_sum_rewards, dist, beta=0).detach().clone()
+            value = self.model.critic(states).detach().clone()
             adv = discounted_return - value # no gradients here
             weight = torch.minimum(torch.exp(adv / beta), max_weight).reshape(-1, 1)
             
             # forward pass on actor network
-            cur_policy = self.model.actor(states, mem_actions, dist, beta=0)
+            cur_policy = self.model.actor(states)
             
             # compute loss and backward pass
             if self.continuous_agent:
@@ -215,7 +208,7 @@ class ActorAgent(object):
         # maybe change it to mean later
         return result
         
-    def evaluate_model(self, eval_env, nodes_obs, nodes_actions):
+    def evaluate_model(self, eval_env):
         self.model.actor.eval()
     
         obs = eval_env.reset()
@@ -224,14 +217,9 @@ class ActorAgent(object):
         episode_reward, episode_length = 0, 0
         
         while num_episodes < args.eval_episodes:
-            unnorm_obs = torch.from_numpy(obs[None, :]).float().to(self.device)
-            _, closest_nodes = torch.cdist(unnorm_obs, nodes_obs).min(dim=1)
-            mem_action = nodes_actions[closest_nodes, :]
-            
             obs = scaler.transform(obs)
             obs = torch.from_numpy(obs).float().to(self.device)
-            dist = torch.norm(obs - nodes_obs[closest_nodes, :], p=2, dim=1).unsqueeze(1)
-            action = self.model.actor(obs, mem_action, dist, beta=0)
+            action = self.model.actor(obs)
             
             action = action.cpu().detach().numpy()
             next_obs, reward, terminal, _ = eval_env.step(action.flatten())
@@ -301,9 +289,6 @@ if __name__ == '__main__':
     mean_sum_rewards = torch.tensor(dataset['mean_sum_rewards']).to(args.device)
     abs_max_sum_rewards = torch.tensor(dataset['abs_max_sum_rewards']).to(args.device)
 
-    nodes_obs = torch.from_numpy(scaler.transform(dataset["mem_observations"])).float().to(args.device)
-    nodes_actions = torch.from_numpy(dataset["mem_actions"]).float().to(args.device)
-
     use_cuda = True if args.device == "cuda" else False #False
     use_noisy_net = False
     num_sample = 2048
@@ -318,12 +303,11 @@ if __name__ == '__main__':
         input_size,
         output_size,
         args.gamma,
+        buffer,
         args.action_dim,
-        rewards_dim,
-        args.Lipz,
-        args.lamda,
-        args.device,
         scaler,
+        args.batch_size,
+        args.device,
         args.batch_size,
         use_gae=use_gae,
         use_cuda=use_cuda,
@@ -354,7 +338,7 @@ if __name__ == '__main__':
         loss = agent.train_model(buffer, mean_sum_rewards, abs_max_sum_rewards)
         
         if i % 50 == 0:
-            eval_info = agent.evaluate_model(env, nodes_obs, nodes_actions)
+            eval_info = agent.evaluate_model(env)
         
             ep_reward_mean, ep_reward_std = np.mean(eval_info["eval/episode_reward"]), np.std(eval_info["eval/episode_reward"])
             ep_length_mean, ep_length_std = np.mean(eval_info["eval/episode_length"]), np.std(eval_info["eval/episode_length"])
@@ -371,7 +355,7 @@ if __name__ == '__main__':
             logger.logkv_mean(k, v)
         logger.dumpkvs()
         
-        #print(f"epoch {i} time: {time.time() - loop_start_time}s")
+        print(f"epoch {i} time: {time.time() - loop_start_time}s")
       
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
     logger.close()

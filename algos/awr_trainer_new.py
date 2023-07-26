@@ -374,12 +374,14 @@ if __name__ == '__main__':
     start_time = time.time()
 
     for i in range(iteration):
+        loop_start_time = time.time()
         batch = buffer.sample_paths(num_paths)
         states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
         mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
         print(f'Epoch {i} num_paths : {len(states)}')
 
         loss = agent.train_model(states, actions, rewards, dones, mem_states, mem_actions, mem_sum_rewards, mean_sum_rewards, abs_max_sum_rewards)
+        
         eval_info = agent.evaluate_model(env)
         
         ep_reward_mean, ep_reward_std = np.mean(eval_info["eval/episode_reward"]), np.std(eval_info["eval/episode_reward"])
@@ -395,6 +397,8 @@ if __name__ == '__main__':
         for k, v in loss.items():
             logger.logkv_mean(k, v)
         logger.dumpkvs()
+        
+        print(f"epoch {i} time: {time.time() - loop_start_time}s")
     
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
     logger.close()

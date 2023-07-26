@@ -38,6 +38,7 @@ class ReplayBuffer:
         self.is_awr = is_awr
         if is_awr:
             self.mem_sum_rewards = np.zeros((self._max_size, 1), dtype=np.float32)
+            self.sum_rewards = np.zeros((self._max_size, 1), dtype=np.float32)
 
         self.device = torch.device(device)
 
@@ -115,8 +116,10 @@ class ReplayBuffer:
         
         if self.is_awr:
             mem_sum_rewards = np.array(dataset["mem_sum_rewards"], dtype=np.float32).reshape(-1, 1)
-        
-        
+            sum_rewards = np.array(dataset["sum_rewards"], dtype=np.float32).reshape(-1, 1)
+            self.mem_sum_rewards = mem_sum_rewards
+            self.sum_rewards = sum_rewards
+
     # For ensemble dynamics -> use the load_datset above since it does not need mem_
     
     def load_dataset_original(self, dataset: Dict[str, np.ndarray]) -> None:
@@ -165,6 +168,7 @@ class ReplayBuffer:
         if self.is_awr:
             sample_dataset.update({
                 "mem_sum_rewards": torch.tensor(self.mem_sum_rewards[batch_indexes]).to(self.device),
+                "sum_rewards" : torch.tensor(self.sum_rewards[batch_indexes]).to(self.device),
             })
             
         return sample_dataset

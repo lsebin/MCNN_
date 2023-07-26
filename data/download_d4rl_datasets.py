@@ -39,14 +39,14 @@ def download(name, is_awr):
 				final_timestep = dataset['timeouts'][i]
 			else:
 				final_timestep = (episode_step == 1000-1)
-
+    
+			total_sum += dataset['rewards'][i]
+   
 			if done_bool or final_timestep:
-				total_sum += dataset['rewards'][i]
 				total_sum_rewards.append(total_sum)
 				total_sum = 0
 				episode_step = 0
 			else:
-				total_sum += dataset['rewards'][i]
 				episode_step += 1
 				
 		total_sum_rewards.append(total_sum)
@@ -80,6 +80,7 @@ def download(name, is_awr):
 			sum_until = 0
 		else:
 			episode_step += 1
+   
 	print(episode_num)
 
 	returns = np.array([np.sum(p['rewards']) for p in paths])
