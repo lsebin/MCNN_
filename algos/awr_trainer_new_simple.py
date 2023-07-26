@@ -41,9 +41,12 @@ def get_args():
     parser.add_argument('--Lipz', type=float, default=1.0)
     parser.add_argument('--lamda', type=float, default=1.0)
     parser.add_argument('--use-tqdm', type=int, default=1) # 1 or 0
+    
     parser.add_argument('--critic-update-iter', type=int, default=500) # 1 or 0
     parser.add_argument('--actor-update-iter', type=int, default=1000)
     parser.add_argument('--iteration', type=int, default=2000)
+    
+    parser.add_argument('--adv-normalized', type=bool, default=True)
 
     return parser.parse_args()
 
@@ -55,14 +58,12 @@ class RLEnv(Process):
 
         self.daemon = True
         self.env = gym.make(env_id)
-
         self.is_render = is_render
         self.steps = 0
         self.episode = 0
         self.rall = 0
         self.recent_rlist = deque(maxlen=100)
         self.recent_rlist.append(0)
-
         self.reset()
 
     def step(self, action):
@@ -127,15 +128,14 @@ class ActorAgent(object):
                                           lr=0.00005, momentum=0.9)
         self.critic_optimizer = optim.SGD(self.model.critic.parameters(),
                                            lr=0.0001, momentum=0.9)
-        self.device=device
-        self.model = self.model.to(self.device)
+        self.device = device
+        self.model=self.model.to(self.device)
 
     def train_model(self, buffer, mean_sum_rewards, abs_max_sum_rewards) :
         self.model.actor.train()
         self.model.critic.train()
         
         mse_critic = nn.MSELoss()
-        mse_actor = nn.MSELoss()
                         
         result={}
         actor_losses = []
@@ -149,9 +149,9 @@ class ActorAgent(object):
             batch = buffer.sample(args.batch_size)
 
             # get data from batch including discounted rewards, compute dist
-            states, actions, rewards = batch['observations'], batch['actions'], batch['rewards']
+            states, actions = batch['observations'], batch['actions']
             discounted_return = batch['sum_rewards']
-            mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
+            mem_states, mem_sum_rewards = batch['mem_observations'], batch['mem_sum_rewards']
             dist = torch.norm(states - mem_states, p=2, dim=1).unsqueeze(1)
 
             # forward pass on critic network
@@ -180,13 +180,16 @@ class ActorAgent(object):
             batch = buffer.sample(args.batch_size)
 
             # get data from batch including discounted rewards, compute dist
-            states, actions, rewards, dones = batch['observations'], batch['actions'], batch['rewards'], batch["terminals"]
+            states, actions = batch['observations'], batch['actions']
             discounted_return = batch['sum_rewards']
             mem_states, mem_actions, mem_sum_rewards = batch['mem_observations'], batch['mem_actions'], batch['mem_sum_rewards']
             dist = torch.norm(states - mem_states, p=2, dim=1).unsqueeze(1)
 
             # compute advantage to use as weights for "advantge weighted" regression
             value = self.model.critic(states, mem_sum_rewards, dist, beta=0).detach().clone()
+            if not args.adv_normalized:
+                value = value * abs_max_sum_rewards + mean_sum_rewards
+                discounted_return = discounted_return * abs_max_sum_rewards + mean_sum_rewards
             adv = discounted_return - value # no gradients here
             weight = torch.minimum(torch.exp(adv / beta), max_weight).reshape(-1, 1)
             
@@ -215,7 +218,7 @@ class ActorAgent(object):
         # maybe change it to mean later
         return result
         
-    def evaluate_model(self, eval_env, nodes_obs, nodes_actions):
+    def evaluate_model(self, eval_env, unnorm_nodes_obs, norm_nodes_obs, nodes_actions):
         self.model.actor.eval()
     
         obs = eval_env.reset()
@@ -225,12 +228,12 @@ class ActorAgent(object):
         
         while num_episodes < args.eval_episodes:
             unnorm_obs = torch.from_numpy(obs[None, :]).float().to(self.device)
-            _, closest_nodes = torch.cdist(unnorm_obs, nodes_obs).min(dim=1)
+            _, closest_nodes = torch.cdist(unnorm_obs, unnorm_nodes_obs).min(dim=1)
             mem_action = nodes_actions[closest_nodes, :]
             
             obs = scaler.transform(obs)
             obs = torch.from_numpy(obs).float().to(self.device)
-            dist = torch.norm(obs - nodes_obs[closest_nodes, :], p=2, dim=1).unsqueeze(1)
+            dist = torch.norm(obs - norm_nodes_obs[closest_nodes, :], p=2, dim=1).unsqueeze(1)
             action = self.model.actor(obs, mem_action, dist, beta=0)
             
             action = action.cpu().detach().numpy()
@@ -301,7 +304,8 @@ if __name__ == '__main__':
     mean_sum_rewards = torch.tensor(dataset['mean_sum_rewards']).to(args.device)
     abs_max_sum_rewards = torch.tensor(dataset['abs_max_sum_rewards']).to(args.device)
 
-    nodes_obs = torch.from_numpy(scaler.transform(dataset["mem_observations"])).float().to(args.device)
+    unnorm_nodes_obs = torch.from_numpy(dataset["mem_observations"]).float().to(args.device)
+    norm_nodes_obs = torch.from_numpy(scaler.transform(dataset["mem_observations"])).float().to(args.device)
     nodes_actions = torch.from_numpy(dataset["mem_actions"]).float().to(args.device)
 
     use_cuda = True if args.device == "cuda" else False #False
@@ -354,7 +358,7 @@ if __name__ == '__main__':
         loss = agent.train_model(buffer, mean_sum_rewards, abs_max_sum_rewards)
         
         if i % 50 == 0:
-            eval_info = agent.evaluate_model(env, nodes_obs, nodes_actions)
+            eval_info = agent.evaluate_model(env, unnorm_nodes_obs, norm_nodes_obs, nodes_actions)
         
             ep_reward_mean, ep_reward_std = np.mean(eval_info["eval/episode_reward"]), np.std(eval_info["eval/episode_reward"])
             ep_length_mean, ep_length_std = np.mean(eval_info["eval/episode_length"]), np.std(eval_info["eval/episode_length"])

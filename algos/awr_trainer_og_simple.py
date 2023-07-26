@@ -44,6 +44,8 @@ def get_args():
     parser.add_argument('--critic-update-iter', type=int, default=500) # 1 or 0
     parser.add_argument('--actor-update-iter', type=int, default=1000)
     parser.add_argument('--iteration', type=int, default=2000)
+    
+    parser.add_argument('--adv-normalized', type=bool, default=False)
 
     return parser.parse_args()
 
@@ -55,14 +57,12 @@ class RLEnv(Process):
 
         self.daemon = True
         self.env = gym.make(env_id)
-
         self.is_render = is_render
         self.steps = 0
         self.episode = 0
         self.rall = 0
         self.recent_rlist = deque(maxlen=100)
         self.recent_rlist.append(0)
-
         self.reset()
 
     def step(self, action):
@@ -124,7 +124,7 @@ class ActorAgent(object):
                                           lr=0.00005, momentum=0.9)
         self.critic_optimizer = optim.SGD(self.model.critic.parameters(),
                                            lr=0.0001, momentum=0.9)
-        self.device=device
+        self.device = device
         self.model = self.model.to(self.device)
 
     def train_model(self, buffer, mean_sum_rewards, abs_max_sum_rewards) :
@@ -132,7 +132,6 @@ class ActorAgent(object):
         self.model.critic.train()
         
         mse_critic = nn.MSELoss()
-        mse_actor = nn.MSELoss()
                         
         result={}
         actor_losses = []
@@ -180,6 +179,9 @@ class ActorAgent(object):
 
             # compute advantage to use as weights for "advantge weighted" regression
             value = self.model.critic(states).detach().clone()
+            if args.adv_normalized:
+                value = value * abs_max_sum_rewards + mean_sum_rewards
+                discounted_return = discounted_return * abs_max_sum_rewards + mean_sum_rewards
             adv = discounted_return - value # no gradients here
             weight = torch.minimum(torch.exp(adv / beta), max_weight).reshape(-1, 1)
             
@@ -355,7 +357,7 @@ if __name__ == '__main__':
             logger.logkv_mean(k, v)
         logger.dumpkvs()
         
-        print(f"epoch {i} time: {time.time() - loop_start_time}s")
+        #print(f"epoch {i} time: {time.time() - loop_start_time}s")
       
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
     logger.close()
