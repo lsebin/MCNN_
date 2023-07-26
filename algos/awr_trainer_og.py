@@ -342,7 +342,7 @@ if __name__ == '__main__':
     last_10_performance = deque(maxlen=10)
     start_time = time.time()
     
-    num_paths = 256
+    num_paths = args.batch_size
         
     for i in range(iteration):
         batch = buffer.sample_paths(num_paths)

@@ -192,6 +192,23 @@ class BaseActorCriticNetwork(nn.Module):
         
         self.actor = MemActor(actor_backbone, action_dim, device=device, Lipz=Lipz, lamda=lamda)
         self.critic = MemActor(critic_backbone, rewards_dim, device=device, Lipz=Lipz, lamda=lamda)
+        
+        # param_size=0
+        # buffer_size=0
+        # for param in self.actor.parameters():
+        #     param_size += param.nelement() * param.element_size()
+        # for buffer in self.actor.buffers():
+        #     buffer_size += buffer.nelement() * buffer.element_size()
+            
+        # for param in self.critic.parameters():
+        #     param_size += param.nelement() * param.element_size()
+        # for buffer in self.critic.buffers():
+        #     buffer_size += buffer.nelement() * buffer.element_size()
+
+        # size_all_mb = (param_size + buffer_size) / 1024**2
+        # print('Size: {:.3f} MB'.format(size_all_mb))
+        
+        # print(param_size)
 
         for p in self.modules():
             if isinstance(p, nn.Conv2d):

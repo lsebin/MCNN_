@@ -142,7 +142,7 @@ class ActorAgent(object):
         
         dist = torch.norm(s_batch - mem_state, p=2, dim=1).unsqueeze(1)
         
-        #print(s_batch.get_device(), action_batch.get_device(), reward_batch.get_device(), done_batch.get_device(), mem_state.get_device(), mem_sum_rewards.get_device(), dist.get_device())
+        # print(s_batch.get_device(), action_batch.get_device(), reward_batch.get_device(), done_batch.get_device(), mem_state.get_device(), mem_sum_rewards.get_device(), dist.get_device())
         
         result={}
         
@@ -150,12 +150,18 @@ class ActorAgent(object):
         self.critic_optimizer.zero_grad()
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, 0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
-        discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy()) #
+        discounted_reward, _ = discount_return(reward_batch, done_batch, cur_value.cpu().detach().numpy()) 
+        # print(s_batch.get_device(), action_batch.get_device(), reward_batch.get_device(), done_batch.get_device(), mem_state.get_device(), mem_sum_rewards.get_device(), dist.get_device())
+        # print(discounted_reward.get_device(), cur_value.get_device())
         critic_start_time = time.time()
         for iter in range(critic_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             sample_value = self.model.critic(s_batch[sample_idx], mem_sum_rewards[sample_idx], dist[sample_idx], beta=0)
             sample_value = sample_value * abs_max_sum_rewards + mean_sum_rewards
+            
+            # if sample_value.get_device() != discounted_reward.get_device():
+            #     print("in cpu")
+            
             if (torch.sum(torch.isnan(sample_value)) > 0):
                 print('NaN in value prediction')
                 input()
@@ -175,12 +181,17 @@ class ActorAgent(object):
         cur_value = self.model.critic(s_batch, mem_sum_rewards, dist, beta=0)
         cur_value = cur_value * abs_max_sum_rewards + mean_sum_rewards
         discounted_reward, adv = discount_return(reward_batch, done_batch, cur_value) #.cpu().detach().numpy()
+        print(discounted_reward.get_device(), cur_value.get_device(), adv.get_device())
         self.actor_optimizer.zero_grad()
         actor_start_time = time.time()
         for iter in range(actor_update_iter):
             sample_idx = random.sample(range(data_len), self.batch_size)
             weight = torch.minimum(torch.exp(adv[sample_idx] / beta), max_weight).reshape(-1, 1)
             cur_policy = self.model.actor(s_batch[sample_idx], mem_action[sample_idx], dist[sample_idx], beta=0)
+            
+            # if cur_policy.get_device() != discounted_reward.get_device() or weight.get_device() != discounted_reward.get_device():
+            #     print("cur_policy", cur_policy.get_device())
+            
             if self.continuous_agent:
                 actor_loss = mse_actor(cur_policy.squeeze(), action_batch[sample_idx]) #torch.as_tensor(action_batch[sample_idx], device=self.device, dtype=torch.float32)
             else:
@@ -204,7 +215,6 @@ class ActorAgent(object):
         # maybe change it to mean later
         return result
         
-    
     def evaluate_model(self, eval_env):
         self.model.actor.eval()
     
@@ -357,7 +367,8 @@ if __name__ == '__main__':
     logger = Logger(log_dirs, output_config)
     logger.log_hyperparameters(vars(args))
 
-    num_paths = 256
+    num_paths = args.batch_size
+    print(num_paths)
     
     last_10_performance = deque(maxlen=10)
     start_time = time.time()

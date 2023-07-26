@@ -96,4 +96,7 @@ class MemActor(nn.Module):
         exp_lamda_dist = torch.exp(-lamda_in_exp * dist)
         actions = mem_actions * exp_lamda_dist + self.Lipz * (1-exp_lamda_dist) * self._max * self.memory_act(self.last(logits), beta)
         
+        if mem_actions.get_device() + logits.get_device() + actions.get_device() != 0:
+            print("not cuda")
+        
         return actions
