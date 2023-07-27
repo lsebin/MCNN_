@@ -8,7 +8,7 @@ from typing import Dict, Union, Tuple
 from offlinerlkit.policy import BasePolicy
 
 
-class IQLPolicy(BasePolicy):
+class MemIQLPolicy(BasePolicy):
     """
     Implicit Q-Learning <Ref: https://arxiv.org/abs/2110.06169>
     """
@@ -27,7 +27,9 @@ class IQLPolicy(BasePolicy):
         tau: float = 0.005,
         gamma: float  = 0.99,
         expectile: float = 0.8,
-        temperature: float = 0.1
+        temperature: float = 0.1,
+        adv_normalized : bool = False,
+        beta : float = 0.05,
     ) -> None:
         super().__init__()
 
@@ -48,6 +50,8 @@ class IQLPolicy(BasePolicy):
         self._gamma = gamma
         self._expectile = expectile
         self._temperature = temperature
+        self.adv_normalized = adv_normalized
+        self.beta = beta
 
     def train(self) -> None:
         self.actor.train()
@@ -84,14 +88,18 @@ class IQLPolicy(BasePolicy):
         return weight * (diff**2)
     
     def learn(self, batch: Dict) -> Dict[str, float]:
-        obss, actions, next_obss, rewards, terminals = batch["observations"], batch["actions"], \
-            batch["next_observations"], batch["rewards"], batch["terminals"]
+        obss, actions, next_obss, rewards, discounted_return, terminals = batch["observations"], batch["actions"], \
+            batch["next_observations"], batch["rewards"], batch['sum_rewards'], batch["terminals"]
+        mem_obss, mem_next_obss, mem_actions, mem_rewards, mem_sum_rewards = batch['mem_observations'], batch['mem_next_observations'], batch['mem_actions'], batch['mem_rewards'], batch['mem_sum_rewards']
+        batch_size = len(obss)
+        distance = torch.norm(obss - mem_obss, p=2, dim=1).unsqueeze(1)
+        next_distance = torch.norm(next_obss - mem_next_obss, p=2, dim=1).unsqueeze(1)
         
         # update value net
         with torch.no_grad():
             q1, q2 = self.critic_q1_old(obss, actions), self.critic_q2_old(obss, actions)
             q = torch.min(q1, q2)
-        v = self.critic_v(obss)
+        v = self.critic_v(obss, mem_sum_rewards, distance, beta=0)
         critic_v_loss = self._expectile_regression(q-v).mean()
         self.critic_v_optim.zero_grad()
         critic_v_loss.backward()
@@ -100,7 +108,8 @@ class IQLPolicy(BasePolicy):
         # update critic
         q1, q2 = self.critic_q1(obss, actions), self.critic_q2(obss, actions)
         with torch.no_grad():
-            next_v = self.critic_v(next_obss)
+            next_mem_sum_rewards = mem_sum_rewards + mem_rewards
+            next_v = self.critic_v(next_obss, next_mem_sum_rewards, next_distance, beta=0)
             target_q = rewards + self._gamma * (1 - terminals) * next_v
         
         critic_q1_loss = ((q1 - target_q).pow(2)).mean()
@@ -118,12 +127,12 @@ class IQLPolicy(BasePolicy):
         with torch.no_grad():
             q1, q2 = self.critic_q1_old(obss, actions), self.critic_q2_old(obss, actions)
             q = torch.min(q1, q2)
-            v = self.critic_v(obss)
+            v = self.critic_v(obss, mem_sum_rewards, distance, beta=0)
+            print(q.shape, v.shape)
             exp_a = torch.exp((q - v) * self._temperature)
             exp_a = torch.clip(exp_a, None, 100.0)
-        dist = self.actor(obss)
-        log_probs = dist.log_prob(actions)
-        actor_loss = -(exp_a * log_probs).mean()
+        cur_policy = self.actor(obss, mem_actions, distance, beta=0)
+        actor_loss = (exp_a * (cur_policy - actions).pow(2)).mean()
 
         self.actor_optim.zero_grad()
         actor_loss.backward()

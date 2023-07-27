@@ -356,8 +356,6 @@ if __name__ == '__main__':
         for k, v in loss.items():
             logger.logkv_mean(k, v)
         logger.dumpkvs()
-        
-        #print(f"epoch {i} time: {time.time() - loop_start_time}s")
       
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
     logger.close()

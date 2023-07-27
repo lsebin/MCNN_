@@ -144,7 +144,7 @@ class ActorAgent(object):
         # update critic
         self.critic_optimizer.zero_grad()
         critic_start_time = time.time()
-        for iter in range(args.critic_update_iter):
+        for _ in range(args.critic_update_iter):
             # sample batch from buffer
             batch = buffer.sample(args.batch_size)
 
@@ -175,7 +175,7 @@ class ActorAgent(object):
         # update actor
         self.actor_optimizer.zero_grad()
         actor_start_time = time.time()
-        for iter in range(args.actor_update_iter):
+        for _ in range(args.actor_update_iter):
             # sample batch from buffer
             batch = buffer.sample(args.batch_size)
 
@@ -374,8 +374,6 @@ if __name__ == '__main__':
         for k, v in loss.items():
             logger.logkv_mean(k, v)
         logger.dumpkvs()
-        
-        #print(f"epoch {i} time: {time.time() - loop_start_time}s")
       
     logger.log("total time: {:.2f}s".format(time.time() - start_time))
     logger.close()

@@ -83,10 +83,6 @@ class MemActor(nn.Module):
         return 2 * crazy_relu(0.5*(x+1), beta) - 1
 
     def forward(self, obs, mem_actions, dist, beta) -> torch.Tensor:
-        # obs = torch.as_tensor(obs, device=self.device, dtype=torch.float32)
-        # mem_actions = torch.as_tensor(mem_actions, device=self.device, dtype=torch.float32)
-        # dist = torch.as_tensor(dist, device=self.device, dtype=torch.float32)
-        
         logits = self.backbone(obs)
         if not torch.is_tensor(logits):
             print(obs.shape, logits)
