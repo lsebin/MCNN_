@@ -38,7 +38,7 @@ class MFPolicyTrainer:
         self._eval_episodes = eval_episodes
         self.lr_scheduler = lr_scheduler
 
-    def train(self, use_tqdm: bool = True) -> Dict[str, float]:
+    def train(self, use_tqdm: bool = False) -> Dict[str, float]:
         start_time = time.time()
 
         num_timesteps = 0

@@ -23,6 +23,11 @@ class MemIQLPolicy(BasePolicy):
         critic_q1_optim: torch.optim.Optimizer,
         critic_q2_optim: torch.optim.Optimizer,
         critic_v_optim: torch.optim.Optimizer,
+        unnorm_nodes_obs : np.ndarray,
+        norm_nodes_obs : torch.Tensor,
+        nodes_actions : torch.Tensor,
+        device : str,
+        scaler : object,
         action_space: gym.spaces.Space,
         tau: float = 0.005,
         gamma: float  = 0.99,
@@ -52,6 +57,11 @@ class MemIQLPolicy(BasePolicy):
         self._temperature = temperature
         self.adv_normalized = adv_normalized
         self.beta = beta
+        self.unnorm_nodes_obs = unnorm_nodes_obs
+        self.norm_nodes_obs = norm_nodes_obs
+        self.nodes_actions = nodes_actions
+        self.device = device
+        self.scaler = scaler
 
     def train(self) -> None:
         self.actor.train()
@@ -74,12 +84,14 @@ class MemIQLPolicy(BasePolicy):
     def select_action(self, obs: np.ndarray, deterministic: bool = False) -> np.ndarray:
         if len(obs.shape) == 1:
             obs = obs.reshape(1, -1)
+        _, closest_nodes = torch.cdist(torch.from_numpy(obs).float().to(self.device), self.unnorm_nodes_obs).min(dim=1)
+        mem_actions = self.nodes_actions[closest_nodes, :]
+        obs = self.scaler.transform(obs)
+        obs = torch.from_numpy(obs).float().to(self.device)
+        distance = torch.norm(obs - self.norm_nodes_obs[closest_nodes, :], p=2, dim=1).unsqueeze(1)
         with torch.no_grad():
-            dist = self.actor(obs)
-            if deterministic:
-                action = dist.mode().cpu().numpy()
-            else:
-                action = dist.sample().cpu().numpy()
+            dist = self.actor(obs, mem_actions, distance, beta=0)
+            action = dist.cpu().numpy()
         action = np.clip(action, self.action_space.low[0], self.action_space.high[0])
         return action
     
@@ -91,7 +103,6 @@ class MemIQLPolicy(BasePolicy):
         obss, actions, next_obss, rewards, discounted_return, terminals = batch["observations"], batch["actions"], \
             batch["next_observations"], batch["rewards"], batch['sum_rewards'], batch["terminals"]
         mem_obss, mem_next_obss, mem_actions, mem_rewards, mem_sum_rewards = batch['mem_observations'], batch['mem_next_observations'], batch['mem_actions'], batch['mem_rewards'], batch['mem_sum_rewards']
-        batch_size = len(obss)
         distance = torch.norm(obss - mem_obss, p=2, dim=1).unsqueeze(1)
         next_distance = torch.norm(next_obss - mem_next_obss, p=2, dim=1).unsqueeze(1)
         
@@ -108,7 +119,7 @@ class MemIQLPolicy(BasePolicy):
         # update critic
         q1, q2 = self.critic_q1(obss, actions), self.critic_q2(obss, actions)
         with torch.no_grad():
-            next_mem_sum_rewards = mem_sum_rewards + mem_rewards
+            next_mem_sum_rewards = mem_sum_rewards - mem_rewards
             next_v = self.critic_v(next_obss, next_mem_sum_rewards, next_distance, beta=0)
             target_q = rewards + self._gamma * (1 - terminals) * next_v
         
@@ -128,7 +139,6 @@ class MemIQLPolicy(BasePolicy):
             q1, q2 = self.critic_q1_old(obss, actions), self.critic_q2_old(obss, actions)
             q = torch.min(q1, q2)
             v = self.critic_v(obss, mem_sum_rewards, distance, beta=0)
-            print(q.shape, v.shape)
             exp_a = torch.exp((q - v) * self._temperature)
             exp_a = torch.clip(exp_a, None, 100.0)
         cur_policy = self.actor(obss, mem_actions, distance, beta=0)
