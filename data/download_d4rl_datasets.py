@@ -19,6 +19,13 @@ parser.add_argument('--name', type=str)
 
 def download(name, is_awr):
 	print(name)
+ 
+	filename = 'datasets_sum' if is_awr else 'datasets'
+
+	if os.path.exists(f'data/{filename}/{name}.pkl'):
+		print(f"Already exists: {name}.pkl, Skipping...")
+		return
+  
 	env = gym.make(name)
 	dataset = d4rl.qlearning_dataset(env)
 
@@ -88,23 +95,27 @@ def download(name, is_awr):
 	print(f'Number of samples collected: {num_samples}')
 	print(f'Number of episodes: {len(returns)}')
 	print(f'Trajectory returns: mean = {np.mean(returns)}, std = {np.std(returns)}, max = {np.max(returns)}, min = {np.min(returns)}')
+ 
+	filename = 'datasets_sum' if is_awr else 'datasets'
 
-	with open(f'data/datasets_sum/{name}.pkl', 'wb') as f:
+	with open(f'data/{filename}/{name}.pkl', 'wb') as f:
 		pickle.dump(paths, f)
 
 
 args = parser.parse_args()
+
+args.is_awr = True
 savepkl = 'data/datasets_sum' if args.is_awr else 'data/datasets'
 os.makedirs(savepkl, exist_ok=True)
 
 for env_name in ['antmaze-umaze', 'antmaze-medium', 'antmaze-large']:
 	if env_name == 'antmaze-umaze':
-		for dataset_type in ['', '-diverse', '']:
+		for dataset_type in ['', '-diverse']:
 			name = f'{env_name}{dataset_type}-v0'
 			download(name, args.is_awr)
 
 	else :
-		for dataset_type in ['diverse']:
+		for dataset_type in ['diverse', 'play']:
 			name = f'{env_name}-{dataset_type}-v0'
 			download(name, args.is_awr)
 

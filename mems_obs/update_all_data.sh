@@ -3,7 +3,7 @@ mkdir mems_obs/logs_re
 sum=true
 for ENV in antmaze  #hopper walker2d
 do
-     for TYPE in umaze #umaze-diverse #large-diverse large-play medium-diverse medium-play 
+     for TYPE in umaze-diverse #umaze-diverse #large-diverse large-play medium-diverse medium-play 
      do
          mkdir mems_obs/logs/${ENV}-${TYPE}-v0
          for F in 0.1 #0.3 0.4  #0.01 0.025 0.05 0.1 0.25 0.3

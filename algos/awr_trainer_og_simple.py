@@ -21,8 +21,8 @@ def get_args():
     parser.add_argument("--algo-name", type=str, default="mem_awr", choices=["awr", "mem_awr"])
     parser.add_argument("--task", type=str, default='antmaze-umaze-v0')
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--actor-lr", type=float, default=3e-4)
-    parser.add_argument("--critic-lr", type=float, default=3e-4)
+    parser.add_argument("--actor-lr", type=float, default=0.00005) #3e-4
+    parser.add_argument("--critic-lr", type=float, default=0.0001)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--tau", type=float, default=0.005)
     parser.add_argument("--exploration-noise", type=float, default=0.1)
@@ -121,9 +121,9 @@ class ActorAgent(object):
         self.batch_size = batch_size
 
         self.actor_optimizer = optim.SGD(self.model.actor.parameters(),
-                                          lr=0.00005, momentum=0.9)
+                                          lr=args.actor_lr, momentum=0.9)
         self.critic_optimizer = optim.SGD(self.model.critic.parameters(),
-                                           lr=0.0001, momentum=0.9)
+                                           lr=args.critic_lr, momentum=0.9)
         self.device = device
         self.model = self.model.to(self.device)
 
@@ -291,6 +291,7 @@ if __name__ == '__main__':
     mean_sum_rewards = torch.tensor(dataset['mean_sum_rewards']).to(args.device)
     abs_max_sum_rewards = torch.tensor(dataset['abs_max_sum_rewards']).to(args.device)
 
+    # parameters
     use_cuda = True if args.device == "cuda" else False #False
     use_noisy_net = False
     num_sample = 2048
