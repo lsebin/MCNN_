@@ -20,7 +20,7 @@ parser.add_argument('--name', type=str)
 def download(name, is_awr):
 	print(name)
 	env = gym.make(name)
-	dataset = d4rl.qlearning_dataset(env) # env.get_dataset()
+	dataset = d4rl.qlearning_dataset(env)
 
 	N = dataset['rewards'].shape[0]
 	data_ = collections.defaultdict(list)

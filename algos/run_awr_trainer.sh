@@ -5,7 +5,7 @@ mkdir algos/logs/${task}/${AlgoType}
 
 SEED=1
 Lipz=1
-lamda=0.1
+lamda=10
 f=0.1
 bs=512
 

@@ -124,12 +124,9 @@ class MemDynamics(object):
             mem_inputs, mem_targets = self.find_memories(inputs)
             
             obss_normalized = (obss - self.obss_mean) / self.obss_std
-            #actions_normalized = (actions - self.actions_mean) / self.actions_std
-            #inputs = np.concatenate([obss_normalized, actions_normalized], axis=-1)
             inputs = np.concatenate([obss_normalized, actions], axis=-1)
             inputs = torch.from_numpy(inputs).float().to(self.device)
             
-            #dist = torch.norm(inputs - mem_inputs, pnorm=2, dim=1).unsqueeze(1)
             dist = self.compute_distances(inputs, mem_inputs)
     
             preds = self.model(inputs=inputs, mem_targets=mem_targets, dist=dist, beta=0).cpu().numpy()
@@ -179,18 +176,6 @@ class MemDynamics(object):
 
         print(f'obss: {obss.shape}, actions: {actions.shape}, next_obss: {next_obss.shape}, rewards: {rewards.shape}, mem_obss: {mem_obss.shape}, mem_actions: {mem_actions.shape}, mem_next_obss: {mem_next_obss.shape}, mem_rewards: {mem_rewards.shape}')
         
-        """
-        self.obss_mean = np.mean(data["observations"], axis=0, keepdims=True)
-        self.obss_std = np.std(data["observations"], axis=0, keepdims=True)
-        self.obss_mean_tensor = torch.from_numpy(self.obss_mean).to(self.device)
-        self.obss_std_tensor = torch.from_numpy(self.obss_std).to(self.device)
-        
-        self.actions_mean = np.mean(data["actions"], axis=0, keepdims=True)
-        self.actions_std = np.std(data["actions"], axis=0, keepdims=True)
-        self.actions_mean_tensor = torch.from_numpy(self.actions_mean).to(self.device)
-        self.actions_std_tensor = torch.from_numpy(self.actions_std)
-        """
-        
         self.rewards_std = np.std(data["rewards"], axis=0, keepdims=True)
 
         delta_obss = (next_obss - obss) 
@@ -199,16 +184,11 @@ class MemDynamics(object):
 
         obss = (obss - self.obss_mean) / self.obss_std
         next_obss = (next_obss - self.obss_mean) / self.obss_std
-        # actions = (actions - self.actions_mean) / self.actions_std
 
         mem_obss = (mem_obss - self.obss_mean) / self.obss_std
         mem_next_obss = (mem_next_obss - self.obss_mean) / self.obss_std
-        # mem_actions = (mem_actions - self.actions_mean) / self.actions_std
-        print(rewards)
-        print(np.max(rewards))
+
         rewards = (rewards - self.rewards_mean) / self.abs_max_rewards_diff
-        print(rewards)
-        print(np.max(rewards))
         
         mem_rewards = (mem_rewards - self.rewards_mean) / self.abs_max_rewards_diff
         
@@ -267,7 +247,6 @@ class MemDynamics(object):
                 #print(f"beta:{self.beta}")
             
             train_loss = self.train_model_step(batch)
-            #print(train_loss)
             
             train_losses.append(train_loss)
             if self.scheduler is not None:

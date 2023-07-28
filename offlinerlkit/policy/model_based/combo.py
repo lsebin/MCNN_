@@ -63,7 +63,6 @@ class COMBOPolicy(CQLPolicy):
 
         self.dynamics = dynamics
         self.rollout_gamma = rollout_gamma
-        print(self.rollout_gamma)
         self._uniform_rollout = uniform_rollout
         self._rho_s = rho_s
 
@@ -92,8 +91,6 @@ class COMBOPolicy(CQLPolicy):
                 actions = self.select_action(observations)
             
             next_observations, rewards, terminals, info = self.dynamics.step(observations, actions)
-            
-            print(rewards)
             
             #added for penalty
             '''
@@ -214,8 +211,9 @@ class COMBOPolicy(CQLPolicy):
         real_obss, real_actions = real_batch['observations'], real_batch['actions']
         q1, q2 = self.critic1(real_obss, real_actions), self.critic2(real_obss, real_actions)
         
+        # From COMBO to MOPO
+        
         '''
-
         conservative_loss1 = \
             torch.logsumexp(cat_q1 / self._temperature, dim=1).mean() * self._cql_weight * self._temperature - \
             q1.mean() * self._cql_weight
